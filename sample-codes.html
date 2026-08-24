@@ -4,14 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WYS — Sample Test Codes</title>
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
   body{font-family:Inter,Arial,sans-serif;background:#f7f4ee;margin:0;padding:24px;color:#201c17}
   h1{font-size:20px;margin-bottom:4px}
   p.note{color:#8a7d68;font-size:13px;margin-bottom:24px;max-width:560px}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:18px}
   .card{background:#fff;border:1px solid #e6ded0;border-radius:14px;padding:14px;text-align:center}
-  .card canvas{width:100%;height:auto}
+  .card .qr-box{display:flex;justify-content:center}
+  .card .qr-box img,.card .qr-box canvas{width:100%;height:auto}
   .brand{font-weight:800;font-size:13px;margin-top:8px}
   .model{font-size:11px;color:#8a7d68}
   .code{font-family:monospace;font-size:11px;color:#c9a24b;margin-top:4px}
@@ -45,8 +46,11 @@ const grid = document.getElementById('grid');
 SAMPLES.forEach(item => {
   const card = document.createElement('div');
   card.className = 'card';
-  const canvas = document.createElement('canvas');
-  card.appendChild(canvas);
+
+  const qrBox = document.createElement('div');
+  qrBox.className = 'qr-box';
+  card.appendChild(qrBox);
+
   const brand = document.createElement('div');
   brand.className = 'brand';
   brand.textContent = item.brand;
@@ -58,7 +62,15 @@ SAMPLES.forEach(item => {
   code.textContent = item.code;
   card.appendChild(brand); card.appendChild(model); card.appendChild(code);
   grid.appendChild(card);
-  QRCode.toCanvas(canvas, item.code, { width: 220, margin: 1, color: { dark: '#171310', light: '#ffffff' } });
+
+  new QRCode(qrBox, {
+    text: item.code,
+    width: 220,
+    height: 220,
+    colorDark: '#171310',
+    colorLight: '#ffffff',
+    correctLevel: QRCode.CorrectLevel.M
+  });
 });
 </script>
 </body>
