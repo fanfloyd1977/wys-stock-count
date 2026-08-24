@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>WYS — Stock Count</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+:root{
+  /* Premium architectural-lighting palette (inferred from palicon.co.th's
+     "Mastering Light" brand feel — warm brass/gold light against deep charcoal) */
+  --ink:#171310;
+  --ink2:#26201a;
+  --gold:#c9a24b;
+  --gold2:#e6c878;
+  --bg:#f7f4ee;
+  --card:#ffffff;
+  --text:#201c17;
+  --muted:#8a7d68;
+  --border:#e6ded0;
+  --green:#3f8f5f;
+  --green-light:#e7f4ec;
+  --red:#c0453f;
+  --red-light:#fbeae9;
+  --shadow:0 6px 24px rgba(23,19,16,.10);
+  --shadow-sm:0 2px 10px rgba(23,19,16,.08);
+  --radius:18px;
+  --tab-h:64px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Inter',sans-serif;background:var(--ink);display:flex;justify-content:center;min-height:100vh;-webkit-tap-highlight-color:transparent}
+#app{width:100%;max-width:430px;min-height:100vh;background:var(--bg);position:relative;overflow-y:auto;overflow-x:hidden}
+h1,h2,.serif{font-family:'Playfair Display',serif}
+
+.screen{display:none;flex-direction:column;min-height:100vh;padding-bottom:calc(var(--tab-h) + env(safe-area-inset-bottom,0px) + 16px);animation:fadeIn .2s ease}
+.screen.active{display:flex}
+@keyframes fadeIn{to{opacity:1}}
+
+.app-header{background:linear-gradient(160deg,var(--ink) 0%,var(--ink2) 100%);color:#fff;padding:48px 20px 22px}
+.app-header h1{font-size:22px;font-weight:700;color:#fff}
+.app-header .sub{font-size:12px;color:var(--gold2);margin-top:3px;letter-spacing:.4px;text-transform:uppercase}
+
+.card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow-sm);padding:18px;margin:14px 16px;border:1px solid var(--border)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:none;border-radius:14px;font-family:'Inter',sans-serif;font-size:15px;font-weight:700;cursor:pointer;padding:13px 20px;min-height:48px;transition:transform .12s,opacity .12s;width:100%}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:linear-gradient(135deg,var(--gold),#a8823a);color:#fff;box-shadow:0 5px 16px rgba(201,162,75,.35)}
+.btn-outline{background:var(--card);border:2px solid var(--gold);color:var(--ink)}
+.btn-danger{background:var(--red-light);color:var(--red)}
+.btn-sm{font-size:13px;padding:9px 14px;min-height:38px}
+
+input[type=text],input[type=password]{width:100%;padding:12px 14px;border-radius:12px;border:2px solid var(--border);font-family:'Inter',sans-serif;font-size:14px;color:var(--text);outline:none;background:var(--bg)}
+input:focus{border-color:var(--gold)}
+label.field-label{font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;display:block;margin-bottom:6px}
+
+#toast{position:fixed;top:60px;left:50%;transform:translateX(-50%) translateY(-20px);background:var(--ink);color:#fff;padding:10px 20px;border-radius:20px;font-size:13px;font-weight:700;z-index:999;opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;max-width:320px;text-align:center}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* LOCK */
+#screen-lock{background:linear-gradient(160deg,var(--ink) 0%,var(--ink2) 100%);align-items:center;justify-content:center;padding-bottom:0}
+.lock-logo{font-size:26px;font-weight:700;color:#fff;text-align:center;margin-bottom:4px}
+.lock-logo .accent{color:var(--gold2)}
+.lock-sub{color:rgba(255,255,255,.6);font-size:13px;margin-bottom:36px;text-align:center;padding:0 30px}
+.lock-dots{display:flex;gap:14px;margin-bottom:32px}
+.lock-dot{width:16px;height:16px;border-radius:50%;border:2px solid rgba(255,255,255,.5);background:transparent;transition:background .15s}
+.lock-dot.filled{background:var(--gold2);border-color:var(--gold2)}
+.lock-dot.error{background:var(--red);border-color:var(--red)}
+.pin-pad{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;width:250px}
+.pin-key{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:14px;color:#fff;font-family:'Inter',sans-serif;font-size:20px;font-weight:700;height:58px;cursor:pointer;transition:background .12s,transform .1s}
+.pin-key:active{background:rgba(255,255,255,.2);transform:scale(.95)}
+
+/* SCAN */
+#reader{width:100%;border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow-sm);border:1px solid var(--border)}
+#reader video{border-radius:var(--radius)}
+.scan-placeholder{background:var(--card);border-radius:var(--radius);border:1px dashed var(--border);padding:40px 20px;text-align:center;color:var(--muted);font-size:14px}
+.result-banner{border-radius:14px;padding:16px;margin:0 16px 6px;font-size:14px;font-weight:700;display:none;align-items:center;gap:10px}
+.result-banner.show{display:flex}
+.result-banner.new{background:var(--green-light);color:var(--green);border:1.5px solid var(--green)}
+.result-banner.dup{background:var(--red-light);color:var(--red);border:1.5px solid var(--red)}
+.result-icon{font-size:22px}
+.today-stat{display:flex;justify-content:space-between;align-items:center;padding:0 20px;margin:2px 0 10px;font-size:12px;color:var(--muted);font-weight:600}
+.today-stat b{color:var(--ink);font-size:14px}
+
+/* SUMMARY */
+.summary-head{display:flex;justify-content:space-between;align-items:center;padding:0 4px 12px}
+.summary-total{font-size:13px;color:var(--muted);font-weight:600}
+.summary-total b{color:var(--ink);font-size:16px}
+.sum-table{width:100%;border-collapse:collapse}
+.sum-table th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:0 10px 8px;font-weight:800}
+.sum-table td{padding:10px;font-size:13px;border-top:1px solid var(--border)}
+.sum-table td.code{font-weight:700;color:var(--text)}
+.sum-table td.qty{font-weight:800;color:var(--gold);text-align:center}
+.sum-table td.time{color:var(--muted);font-size:11px}
+.empty-state{text-align:center;padding:48px 20px;color:var(--muted);font-size:14px}
+.empty-state .es-icon{font-size:40px;margin-bottom:10px}
+
+/* TAB BAR */
+#tab-bar{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:430px;height:calc(var(--tab-h) + env(safe-area-inset-bottom,0px));background:var(--card);border-top:1.5px solid var(--border);display:flex;z-index:100;box-shadow:0 -4px 20px rgba(23,19,16,.08)}
+#tab-bar.hidden{display:none}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;color:#b6ab97;font-size:11px;font-weight:700}
+.tab.active{color:var(--gold)}
+.tab .tab-icon{font-size:20px;line-height:1}
+
+.settings-section-label{font-size:11px;font-weight:800;color:var(--gold);text-transform:uppercase;letter-spacing:.7px;margin:18px 20px 8px}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- LOCK -->
+<div id="screen-lock" class="screen active">
+  <div class="lock-logo">WYS <span class="accent">Stock Count</span></div>
+  <div class="lock-sub" id="lock-sub">Enter your PIN to continue</div>
+  <div class="lock-dots" id="lock-dots">
+    <div class="lock-dot" id="ld0"></div><div class="lock-dot" id="ld1"></div>
+    <div class="lock-dot" id="ld2"></div><div class="lock-dot" id="ld3"></div>
+  </div>
+  <div class="pin-pad">
+    <button class="pin-key" onclick="pinKey('1')">1</button>
+    <button class="pin-key" onclick="pinKey('2')">2</button>
+    <button class="pin-key" onclick="pinKey('3')">3</button>
+    <button class="pin-key" onclick="pinKey('4')">4</button>
+    <button class="pin-key" onclick="pinKey('5')">5</button>
+    <button class="pin-key" onclick="pinKey('6')">6</button>
+    <button class="pin-key" onclick="pinKey('7')">7</button>
+    <button class="pin-key" onclick="pinKey('8')">8</button>
+    <button class="pin-key" onclick="pinKey('9')">9</button>
+    <button class="pin-key" onclick="pinKey('0')" style="grid-column:2">0</button>
+    <button class="pin-key" onclick="pinDel()">⌫</button>
+  </div>
+</div>
+
+<!-- SCAN -->
+<div id="screen-scan" class="screen">
+  <div class="app-header">
+    <h1>Scan Stock</h1>
+    <div class="sub">Point the camera at a QR code or barcode</div>
+  </div>
+  <div class="today-stat"><span>Scanned this session</span><b id="session-count">0</b></div>
+  <div class="result-banner" id="result-banner">
+    <span class="result-icon" id="result-icon">✓</span>
+    <span id="result-text">—</span>
+  </div>
+  <div style="margin:6px 16px">
+    <div id="reader"></div>
+    <div class="scan-placeholder" id="scan-placeholder" style="display:none">
+      Set your Google Sheet link in <b>Settings</b> first, then come back here to start scanning.
+    </div>
+  </div>
+  <div style="margin:14px 16px 0">
+    <button class="btn btn-outline" id="scan-toggle-btn" onclick="toggleScanner()">Start Camera</button>
+  </div>
+</div>
+
+<!-- SUMMARY -->
+<div id="screen-summary" class="screen">
+  <div class="app-header">
+    <h1>Stock Summary</h1>
+    <div class="sub">Live totals from your Google Sheet</div>
+  </div>
+  <div class="card">
+    <div class="summary-head">
+      <div class="summary-total">Total units <b id="summary-total">—</b></div>
+      <button class="btn btn-outline btn-sm" style="width:auto" onclick="loadSummary()">Refresh</button>
+    </div>
+    <div id="summary-body"><div class="empty-state"><div class="es-icon">📋</div>Tap Refresh to load stock counts.</div></div>
+  </div>
+</div>
+
+<!-- SETTINGS -->
+<div id="screen-settings" class="screen">
+  <div class="app-header">
+    <h1>Settings</h1>
+    <div class="sub">Connect your Google Sheet, manage PIN</div>
+  </div>
+
+  <div class="settings-section-label">Google Sheet Connection</div>
+  <div class="card">
+    <label class="field-label">Apps Script Web App URL</label>
+    <input type="text" id="script-url-input" placeholder="https://script.google.com/macros/s/.../exec" autocomplete="off">
+    <button class="btn btn-primary btn-sm" style="margin-top:10px" onclick="saveScriptUrl()">Save URL</button>
+  </div>
+
+  <div class="settings-section-label">Security</div>
+  <div class="card">
+    <label class="field-label">Change PIN</label>
+    <button class="btn btn-outline btn-sm" onclick="startChangePin()">Set New PIN</button>
+  </div>
+
+  <div class="settings-section-label">Danger Zone</div>
+  <div class="card">
+    <button class="btn btn-danger btn-sm" onclick="confirmClearAll()">Clear PIN &amp; Sheet Link</button>
+  </div>
+</div>
+
+<!-- TAB BAR -->
+<div id="tab-bar" class="hidden">
+  <div class="tab active" id="tab-scan" onclick="showScreen('screen-scan')"><div class="tab-icon">📷</div><div>Scan</div></div>
+  <div class="tab" id="tab-summary" onclick="showScreen('screen-summary')"><div class="tab-icon">📊</div><div>Summary</div></div>
+  <div class="tab" id="tab-settings" onclick="showScreen('screen-settings')"><div class="tab-icon">⚙️</div><div>Settings</div></div>
+</div>
+<div id="toast"></div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+// PIN LOCK  (same pattern as WordWise — SHA-256 via Web Crypto)
+// ════════════════════════════════════════════════════════════
+let pinBuffer = '';
+let pinMode = 'enter'; // 'enter' | 'create' | 'confirm'
+let pinFirstEntry = '';
+
+async function sha256(str){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+
+function renderDots(){
+  for(let i=0;i<4;i++){
+    const d = document.getElementById('ld'+i);
+    d.className = 'lock-dot' + (i < pinBuffer.length ? ' filled' : '');
+  }
+}
+
+function pinKey(n){
+  if(pinBuffer.length >= 4) return;
+  pinBuffer += n;
+  renderDots();
+  if(pinBuffer.length === 4) setTimeout(handlePinComplete, 150);
+}
+function pinDel(){ pinBuffer = pinBuffer.slice(0,-1); renderDots(); }
+
+async function handlePinComplete(){
+  const hash = await sha256(pinBuffer);
+  const stored = localStorage.getItem('wys_pin_hash');
+
+  if(pinMode === 'create'){
+    pinFirstEntry = pinBuffer;
+    pinMode = 'confirm';
+    pinBuffer = ''; renderDots();
+    document.getElementById('lock-sub').textContent = 'Confirm your new PIN';
+    return;
+  }
+  if(pinMode === 'confirm'){
+    if(pinBuffer === pinFirstEntry){
+      localStorage.setItem('wys_pin_hash', hash);
+      pinMode = 'enter'; pinBuffer=''; pinFirstEntry=''; renderDots();
+      showToast('PIN saved', 'success');
+      unlockApp();
+    } else {
+      flashError("PIN didn't match — try again");
+      pinMode = 'create'; pinFirstEntry='';
+      document.getElementById('lock-sub').textContent = 'Choose a 4-digit PIN';
+    }
+    return;
+  }
+  // mode === 'enter'
+  if(!stored){
+    // first run — no PIN set yet, treat this entry as the new PIN
+    localStorage.setItem('wys_pin_hash', hash);
+    pinBuffer=''; renderDots();
+    showToast('PIN created', 'success');
+    unlockApp();
+    return;
+  }
+  if(hash === stored){
+    pinBuffer=''; renderDots();
+    unlockApp();
+  } else {
+    flashError('Wrong PIN — try again');
+  }
+}
+
+function flashError(msg){
+  document.getElementById('lock-sub').textContent = msg;
+  for(let i=0;i<4;i++) document.getElementById('ld'+i).classList.add('error');
+  setTimeout(()=>{
+    pinBuffer='';
+    for(let i=0;i<4;i++) document.getElementById('ld'+i).className='lock-dot';
+    document.getElementById('lock-sub').textContent = localStorage.getItem('wys_pin_hash') ? 'Enter your PIN to continue' : 'Choose a 4-digit PIN';
+  }, 700);
+}
+
+function lockApp(){
+  document.getElementById('tab-bar').classList.add('hidden');
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('screen-lock').classList.add('active');
+  pinBuffer=''; renderDots();
+  document.getElementById('lock-sub').textContent = localStorage.getItem('wys_pin_hash') ? 'Enter your PIN to continue' : 'Choose a 4-digit PIN';
+}
+function unlockApp(){
+  document.getElementById('tab-bar').classList.remove('hidden');
+  showScreen('screen-scan');
+}
+function startChangePin(){
+  pinMode = 'create';
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('screen-lock').classList.add('active');
+  document.getElementById('tab-bar').classList.add('hidden');
+  pinBuffer=''; renderDots();
+  document.getElementById('lock-sub').textContent = 'Choose a 4-digit PIN';
+}
+
+// ════════════════════════════════════════════════════════════
+// NAVIGATION
+// ════════════════════════════════════════════════════════════
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  const tabId = 'tab-' + id.replace('screen-','');
+  const tabEl = document.getElementById(tabId);
+  if(tabEl) tabEl.classList.add('active');
+
+  if(id === 'screen-settings'){
+    document.getElementById('script-url-input').value = localStorage.getItem('wys_script_url') || '';
+  }
+  if(id === 'screen-scan'){
+    document.getElementById('scan-placeholder').style.display = getScriptUrl() ? 'none' : 'block';
+    document.getElementById('reader').style.display = getScriptUrl() ? 'block' : 'none';
+  } else {
+    stopScanner();
+  }
+}
+
+function showToast(msg, type){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show' + (type ? ' '+type : '');
+  setTimeout(()=>t.className='', 2200);
+}
+
+// ════════════════════════════════════════════════════════════
+// SETTINGS
+// ════════════════════════════════════════════════════════════
+function getScriptUrl(){ return localStorage.getItem('wys_script_url') || ''; }
+
+function saveScriptUrl(){
+  const val = document.getElementById('script-url-input').value.trim();
+  if(!val.startsWith('https://script.google.com/')){
+    showToast('That doesn\'t look like an Apps Script URL', 'error');
+    return;
+  }
+  localStorage.setItem('wys_script_url', val);
+  showToast('Sheet connected', 'success');
+}
+
+function confirmClearAll(){
+  if(confirm('Remove your PIN and Google Sheet link from this device?')){
+    localStorage.removeItem('wys_pin_hash');
+    localStorage.removeItem('wys_script_url');
+    location.reload();
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// SCANNER  (html5-qrcode — supports QR + common 1D barcodes)
+// ════════════════════════════════════════════════════════════
+let html5QrCode = null;
+let scannerRunning = false;
+let scanLocked = false;
+let sessionCount = 0;
+
+function toggleScanner(){
+  if(!getScriptUrl()){
+    showToast('Connect your Google Sheet in Settings first', 'error');
+    showScreen('screen-settings');
+    return;
+  }
+  scannerRunning ? stopScanner() : startScanner();
+}
+
+function startScanner(){
+  html5QrCode = new Html5Qrcode("reader");
+  const config = {
+    fps: 10,
+    qrbox: { width: 240, height: 240 },
+    formatsToSupport: [
+      Html5QrcodeSupportedFormats.QR_CODE,
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A,
+      Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.CODE_39
+    ]
+  };
+  html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess, ()=>{})
+    .then(()=>{
+      scannerRunning = true;
+      document.getElementById('scan-toggle-btn').textContent = 'Stop Camera';
+    })
+    .catch(err=>{
+      showToast('Camera failed to start — check permission', 'error');
+      console.error(err);
+    });
+}
+
+function stopScanner(){
+  if(html5QrCode && scannerRunning){
+    html5QrCode.stop().then(()=>html5QrCode.clear()).catch(()=>{});
+  }
+  scannerRunning = false;
+  const btn = document.getElementById('scan-toggle-btn');
+  if(btn) btn.textContent = 'Start Camera';
+}
+
+function onScanSuccess(decodedText){
+  if(scanLocked) return;
+  scanLocked = true;
+  postScan(decodedText.trim());
+}
+
+async function postScan(code){
+  try{
+    const res = await fetch(getScriptUrl(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ code })
+    });
+    const data = await res.json();
+    sessionCount++;
+    document.getElementById('session-count').textContent = sessionCount;
+
+    if(data.status === 'new'){
+      showResult('new', '✓', `New item — ${code}`);
+      playChime(true);
+    } else if(data.status === 'duplicate'){
+      showResult('dup', '⚠', `Already counted — ${code} · qty now ${data.qty}`);
+      playChime(false);
+    } else {
+      showToast(data.message || 'Something went wrong', 'error');
+    }
+  }catch(err){
+    showToast('Could not reach your Sheet — check connection', 'error');
+    console.error(err);
+  } finally {
+    setTimeout(()=>{ scanLocked = false; }, 1200);
+  }
+}
+
+function showResult(kind, icon, text){
+  const banner = document.getElementById('result-banner');
+  banner.className = 'result-banner show ' + kind;
+  document.getElementById('result-icon').textContent = icon;
+  document.getElementById('result-text').textContent = text;
+  setTimeout(()=>{ banner.className = 'result-banner'; }, 2600);
+}
+
+// ════════════════════════════════════════════════════════════
+// SOUND  (Web Audio oscillators — new-item chime vs duplicate alarm)
+// ════════════════════════════════════════════════════════════
+let _actx = null;
+function actx(){ if(!_actx) _actx = new (window.AudioContext||window.webkitAudioContext)(); return _actx; }
+
+function playChime(isNew){
+  const ctx = actx();
+  if(isNew){
+    [523,659,784].forEach((f,i)=>{
+      const o=ctx.createOscillator(), g=ctx.createGain();
+      o.type='sine'; o.frequency.value=f;
+      o.connect(g); g.connect(ctx.destination);
+      const t=ctx.currentTime + i*0.07;
+      g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(.18,t+.02); g.gain.exponentialRampToValueAtTime(.001,t+.3);
+      o.start(t); o.stop(t+.3);
+    });
+  } else {
+    // duplicate alarm — two short low buzzes
+    for(let i=0;i<2;i++){
+      const o=ctx.createOscillator(), g=ctx.createGain();
+      o.type='sawtooth'; o.frequency.value=220;
+      o.connect(g); g.connect(ctx.destination);
+      const t=ctx.currentTime + i*0.22;
+      g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(.16,t+.02); g.gain.exponentialRampToValueAtTime(.001,t+.16);
+      o.start(t); o.stop(t+.16);
+    }
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// SUMMARY
+// ════════════════════════════════════════════════════════════
+async function loadSummary(){
+  if(!getScriptUrl()){
+    showToast('Connect your Google Sheet in Settings first', 'error');
+    showScreen('screen-settings');
+    return;
+  }
+  document.getElementById('summary-body').innerHTML = '<div class="empty-state">Loading…</div>';
+  try{
+    const res = await fetch(getScriptUrl());
+    const data = await res.json();
+    document.getElementById('summary-total').textContent = data.total ?? 0;
+    if(!data.items || !data.items.length){
+      document.getElementById('summary-body').innerHTML = '<div class="empty-state"><div class="es-icon">📋</div>No scans yet.</div>';
+      return;
+    }
+    const rows = data.items
+      .slice()
+      .sort((a,b)=> (b.lastScanned||'').localeCompare(a.lastScanned||''))
+      .map(it=>`<tr><td class="code">${escapeHtml(it.code)}</td><td class="qty">${it.qty}</td><td class="time">${formatTime(it.lastScanned)}</td></tr>`)
+      .join('');
+    document.getElementById('summary-body').innerHTML =
+      `<table class="sum-table"><thead><tr><th>Code</th><th>Qty</th><th>Last scanned</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }catch(err){
+    document.getElementById('summary-body').innerHTML = '<div class="empty-state">Could not load — check your Sheet link in Settings.</div>';
+    console.error(err);
+  }
+}
+
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function formatTime(iso){
+  if(!iso) return '—';
+  const d = new Date(iso);
+  if(isNaN(d)) return '—';
+  return d.toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+}
+
+// ════════════════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════════════════
+function init(){
+  lockApp();
+}
+window.addEventListener('load', init);
+window.addEventListener('pageshow', lockApp);
+document.addEventListener('visibilitychange', ()=>{ if(document.hidden){ stopScanner(); lockApp(); } });
+</script>
+</div>
+</body>
+</html>

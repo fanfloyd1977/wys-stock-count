@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WYS — Sample Test Codes</title>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<style>
+  body{font-family:Inter,Arial,sans-serif;background:#f7f4ee;margin:0;padding:24px;color:#201c17}
+  h1{font-size:20px;margin-bottom:4px}
+  p.note{color:#8a7d68;font-size:13px;margin-bottom:24px;max-width:560px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:18px}
+  .card{background:#fff;border:1px solid #e6ded0;border-radius:14px;padding:14px;text-align:center}
+  .card canvas{width:100%;height:auto}
+  .brand{font-weight:800;font-size:13px;margin-top:8px}
+  .model{font-size:11px;color:#8a7d68}
+  .code{font-family:monospace;font-size:11px;color:#c9a24b;margin-top:4px}
+</style>
+</head>
+<body>
+<h1>WYS — Sample Test Codes</h1>
+<p class="note">
+  These are <b>fictional demo SKUs</b> for testing the scanner only — not real vendor barcodes.
+  Brand names are the real Palicon-listed lighting brands (palicon.co.th/our-business/premium-selection);
+  model numbers and codes below are made up for this test. Scan any of these with the WYS app to try it out.
+  Once real vendor codes are available, this page won't be needed.
+</p>
+<div class="grid" id="grid"></div>
+
+<script>
+const SAMPLES = [
+  { brand: "ERCO",              model: "Pollux 175 Spotlight",     code: "DEMO-ERCO-001" },
+  { brand: "BEGA",               model: "Bollard Luminaire 84 129", code: "DEMO-BEGA-002" },
+  { brand: "VIABIZZUNO",         model: "Filo LED Pendant",         code: "DEMO-VIABZ-003" },
+  { brand: "VIBIA",              model: "Wireflow Suspension",      code: "DEMO-VIBIA-004" },
+  { brand: "DELTA LIGHT",        model: "Spy Downlight",            code: "DEMO-DELTA-005" },
+  { brand: "AQForm",             model: "Big Size Wall Lamp",       code: "DEMO-AQF-006"  },
+  { brand: "ORLUNA",             model: "O-Series Recessed",        code: "DEMO-ORL-007"  },
+  { brand: "LED LINEAR",         model: "microLINE Profile",        code: "DEMO-LEDLIN-008" },
+  { brand: "DGA",                model: "Track Spot 3C",            code: "DEMO-DGA-009"  },
+  { brand: "LINEA LIGHT GROUP",  model: "Cover Flap Strip",         code: "DEMO-LLG-010"  }
+];
+
+const grid = document.getElementById('grid');
+SAMPLES.forEach(item => {
+  const card = document.createElement('div');
+  card.className = 'card';
+  const canvas = document.createElement('canvas');
+  card.appendChild(canvas);
+  const brand = document.createElement('div');
+  brand.className = 'brand';
+  brand.textContent = item.brand;
+  const model = document.createElement('div');
+  model.className = 'model';
+  model.textContent = item.model;
+  const code = document.createElement('div');
+  code.className = 'code';
+  code.textContent = item.code;
+  card.appendChild(brand); card.appendChild(model); card.appendChild(code);
+  grid.appendChild(card);
+  QRCode.toCanvas(canvas, item.code, { width: 220, margin: 1, color: { dark: '#171310', light: '#ffffff' } });
+});
+</script>
+</body>
+</html>
