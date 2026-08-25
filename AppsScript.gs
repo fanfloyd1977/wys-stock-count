@@ -16,11 +16,19 @@
  * 6. Paste that URL into the WYS app → Settings → Apps Script Web App URL
  *
  * WHAT IT DOES:
- * - doPost: receives a scanned code, looks it up in the sheet.
+ * - doPost, normal scan (body: {code}): looks the code up in the sheet.
  *   Already exists → increments QTY, updates LAST SCANNED, replies "duplicate".
  *   New code → adds a row with QTY=1, replies "new".
- *   Uses LockService so two people scanning the same code at the same
- *   instant don't create a race condition.
+ * - doPost, correction (body: {code, action:'adjust', delta}): adds `delta`
+ *   (e.g. -1 or +1) to that code's QTY. Drops to 0 or below → row is deleted
+ *   entirely, replies "removed". Otherwise replies "adjusted" with the new
+ *   qty. Used by both the app's "Undo last scan" button and the Summary
+ *   tab's +/- buttons — same relative-adjustment logic either way, which is
+ *   what makes it safe even if someone else is scanning the same code at
+ *   the same time (see WYS/CLAUDE.md for the concurrent-counting discussion).
+ * - Both request types share one LockService lock, so two requests hitting
+ *   the sheet at the same instant (two phones, or a scan + a correction)
+ *   always apply one at a time — no lost updates.
  * - doGet: returns every row as JSON, for the app's Summary screen.
  *
  * If you ever change the code, just paste the new version in over this one
@@ -39,6 +47,23 @@ function doPost(e) {
     var sheet = SpreadsheetApp.getActiveSpreadsheet().getActiveSheet();
     var data = sheet.getDataRange().getValues();
     var now = new Date();
+
+    if (body.action === 'adjust') {
+      var delta = Number(body.delta || 0);
+      for (var i = 1; i < data.length; i++) {
+        if (String(data[i][0]).trim() === code) {
+          var adjustedQty = Number(data[i][1] || 0) + delta;
+          if (adjustedQty <= 0) {
+            sheet.deleteRow(i + 1);
+            return jsonOut({ status: 'removed', code: code });
+          }
+          sheet.getRange(i + 1, 2).setValue(adjustedQty);
+          sheet.getRange(i + 1, 3).setValue(now);
+          return jsonOut({ status: 'adjusted', code: code, qty: adjustedQty });
+        }
+      }
+      return jsonOut({ status: 'error', message: 'Code not found: ' + code });
+    }
 
     for (var i = 1; i < data.length; i++) {
       if (String(data[i][0]).trim() === code) {

@@ -80,6 +80,10 @@ label.field-label{font-size:11px;font-weight:800;color:var(--muted);text-transfo
 .result-banner.show{display:flex}
 .result-banner.ok{background:var(--green-light);color:var(--green);border:1.5px solid var(--green)}
 .result-banner.caution{background:var(--red-light);color:var(--red);border:1.5px solid var(--red)}
+.undo-wrap{display:none;justify-content:center;margin:0 16px 8px}
+.undo-wrap.show{display:flex}
+.undo-btn{background:none;border:none;color:var(--muted);font-size:12px;font-weight:700;text-decoration:underline;cursor:pointer;padding:4px 8px}
+.undo-btn:active{color:var(--red)}
 #reader.paused{opacity:.55}
 .result-icon{font-size:22px}
 .today-stat{display:flex;justify-content:space-between;align-items:center;padding:0 20px;margin:2px 0 10px;font-size:12px;color:var(--muted);font-weight:600}
@@ -97,6 +101,9 @@ label.field-label{font-size:11px;font-weight:800;color:var(--muted);text-transfo
 .sum-table td.brand{font-weight:800;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.2px}
 .sum-table td.code{font-weight:700;color:var(--text)}
 .sum-table td.qty{font-weight:800;color:var(--gold);text-align:center}
+.sum-table td.adjust{padding:5px 4px}
+.adj-btn{width:20px;height:20px;border-radius:5px;border:1px solid var(--border);background:var(--card);color:var(--ink);font-size:12px;font-weight:800;cursor:pointer;line-height:1;margin:0 1px;padding:0}
+.adj-btn:active{background:var(--gold);color:#fff;border-color:var(--gold)}
 .sum-table td.time .date{color:var(--text);font-size:10px;font-weight:600}
 .sum-table td.time .time-only{color:var(--muted);font-size:9px;margin-top:1px}
 .sum-table tr.latest{background:var(--green-light)}
@@ -151,6 +158,7 @@ label.field-label{font-size:11px;font-weight:800;color:var(--muted);text-transfo
     <span class="result-icon" id="result-icon">✓</span>
     <span id="result-text">—</span>
   </div>
+  <div class="undo-wrap" id="undo-wrap"><button class="undo-btn" id="undo-btn" onclick="handleUndo()">Undo last scan</button></div>
   <div style="margin:6px 16px">
     <div id="reader"></div>
     <div class="scan-placeholder" id="scan-placeholder" style="display:none">
@@ -457,6 +465,7 @@ function onScanSuccess(decodedText){
   }
   sessionCount++;
   document.getElementById('session-count').textContent = sessionCount;
+  showUndo(code);
 
   setTimeout(()=>{
     scanLocked = false;
@@ -465,6 +474,40 @@ function onScanSuccess(decodedText){
   }, SCAN_PAUSE_MS);
 
   syncScan(code);
+}
+
+// ════════════════════════════════════════════════════════════
+// UNDO (Scan screen) — a temporary, contextual button tied to the exact
+// code just scanned. It disappears on its own; that disappearing is the
+// signal "too late for a one-tap undo," not a bug — see project notes for
+// why a permanent button would actually be riskier (could undo the wrong,
+// more recent scan instead of the one you meant to fix).
+// ════════════════════════════════════════════════════════════
+const UNDO_VISIBLE_MS = 4000;
+let undoTimer = null;
+let undoCode = null;
+
+function showUndo(code){
+  undoCode = code;
+  document.getElementById('undo-wrap').classList.add('show');
+  clearTimeout(undoTimer);
+  undoTimer = setTimeout(hideUndo, UNDO_VISIBLE_MS);
+}
+
+function hideUndo(){
+  document.getElementById('undo-wrap').classList.remove('show');
+  undoCode = null;
+}
+
+function handleUndo(){
+  if(!undoCode) return;
+  const code = undoCode;
+  hideUndo();
+  if(sessionCount > 0){
+    sessionCount--;
+    document.getElementById('session-count').textContent = sessionCount;
+  }
+  adjustQty(code, -1, { message: `Undone: ${code} ✓` });
 }
 
 async function syncScan(code){
@@ -477,6 +520,33 @@ async function syncScan(code){
     const data = await res.json();
     if(data.status !== 'new' && data.status !== 'duplicate'){
       showToast(data.message || 'Sync issue with your Sheet', 'error');
+    }
+  }catch(err){
+    showToast('Could not reach your Sheet — check connection', 'error');
+    console.error(err);
+  }
+}
+
+// ════════════════════════════════════════════════════════════
+// ADJUST — shared by Undo (Scan screen) and the +/- buttons (Summary tab).
+// Sends a relative change (delta), not an absolute value, so it composes
+// safely even if someone else is scanning the same code at the same time —
+// see project notes for the concurrent-counting discussion this came from.
+// ════════════════════════════════════════════════════════════
+async function adjustQty(code, delta, opts){
+  opts = opts || {};
+  try{
+    const res = await fetch(getScriptUrl(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ code, action: 'adjust', delta })
+    });
+    const data = await res.json();
+    if(data.status === 'adjusted' || data.status === 'removed'){
+      showToast(opts.message || `${code}: ${delta > 0 ? '+1' : delta} done ✓`, 'success');
+      if(opts.onDone) opts.onDone();
+    } else {
+      showToast(data.message || 'Adjust failed', 'error');
     }
   }catch(err){
     showToast('Could not reach your Sheet — check connection', 'error');
@@ -580,15 +650,28 @@ async function loadSummary(){
     const rows = items.map((it,i)=>{
       const brand = (PRODUCT_LOOKUP[it.code] && PRODUCT_LOOKUP[it.code].brand) || '—';
       const rowClass = it.code === latestCode ? ' class="latest"' : '';
-      return `<tr${rowClass}><td class="idx">${i+1}</td><td class="brand">${escapeHtml(brand)}</td><td class="code">${escapeHtml(it.code)}</td><td class="qty">${it.qty}</td><td class="time">${formatTime(it.lastScanned)}</td></tr>`;
+      const safeCode = escapeHtml(it.code);
+      return `<tr${rowClass} data-code="${safeCode}"><td class="idx">${i+1}</td><td class="brand">${escapeHtml(brand)}</td><td class="code">${safeCode}</td><td class="qty">${it.qty}</td><td class="adjust"><button class="adj-btn" data-delta="-1">−</button><button class="adj-btn" data-delta="1">+</button></td><td class="time">${formatTime(it.lastScanned)}</td></tr>`;
     }).join('');
     document.getElementById('summary-body').innerHTML =
-      `<table class="sum-table"><thead><tr><th>#</th><th>Brand</th><th>Code</th><th>Qty</th><th>Last scanned</th></tr></thead><tbody>${rows}</tbody></table>`;
+      `<table class="sum-table"><thead><tr><th>#</th><th>Brand</th><th>Code</th><th>Qty</th><th>Adjust</th><th>Last scanned</th></tr></thead><tbody>${rows}</tbody></table>`;
   }catch(err){
     document.getElementById('summary-body').innerHTML = '<div class="empty-state">Could not load — check your Sheet link in Settings.</div>';
     console.error(err);
   }
 }
+
+document.addEventListener('click', function(e){
+  const btn = e.target.closest('.adj-btn');
+  if(!btn) return;
+  const tr = btn.closest('tr');
+  const code = tr.dataset.code;
+  const delta = Number(btn.dataset.delta);
+  adjustQty(code, delta, {
+    message: `${code}: ${delta > 0 ? '+1' : '-1'} done ✓`,
+    onDone: loadSummary
+  });
+});
 
 function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function formatTime(iso){
