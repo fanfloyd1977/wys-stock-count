@@ -40,9 +40,11 @@ h1,h2,.serif{font-family:'Playfair Display',serif}
 .screen.active{display:flex}
 @keyframes fadeIn{to{opacity:1}}
 
-.app-header{background:linear-gradient(160deg,var(--ink) 0%,var(--ink2) 100%);color:#fff;padding:48px 20px 22px}
+.app-header{background:linear-gradient(160deg,var(--ink) 0%,var(--ink2) 100%);color:#fff;padding:48px 20px 22px;position:relative}
 .app-header h1{font-size:22px;font-weight:700;color:#fff}
 .app-header .sub{font-size:12px;color:var(--gold2);margin-top:3px;letter-spacing:.4px;text-transform:uppercase}
+.lock-btn{position:absolute;top:14px;right:16px;width:32px;height:32px;border-radius:50%;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:#fff;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.lock-btn:active{background:rgba(255,255,255,.2)}
 
 .card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow-sm);padding:18px;margin:14px 16px;border:1px solid var(--border)}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:none;border-radius:14px;font-family:'Inter',sans-serif;font-size:15px;font-weight:700;cursor:pointer;padding:13px 20px;min-height:48px;transition:transform .12s,opacity .12s;width:100%}
@@ -95,13 +97,13 @@ label.field-label{font-size:11px;font-weight:800;color:var(--muted);text-transfo
 .summary-total b{color:var(--ink);font-size:16px}
 .table-scroll{overflow-x:auto}
 .sum-table{width:100%;border-collapse:collapse}
-.sum-table th{text-align:left;font-size:8px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);padding:0 6px 6px;font-weight:800;white-space:nowrap}
-.sum-table td{padding:7px 6px;font-size:11px;border-top:1px solid var(--border);white-space:nowrap}
-.sum-table td.idx{color:var(--muted);font-weight:700;text-align:center}
-.sum-table td.brand{font-weight:800;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.2px}
+.sum-table th{text-align:left;font-size:8px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);padding:0 4px 6px;font-weight:800;white-space:nowrap}
+.sum-table td{padding:7px 4px;font-size:11px;border-top:1px solid var(--border);white-space:nowrap}
+.sum-table td.brand{font-weight:800;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.2px;max-width:56px;overflow:hidden;text-overflow:ellipsis}
 .sum-table td.code{font-weight:700;color:var(--text)}
 .sum-table td.qty{font-weight:800;color:var(--gold);text-align:center}
 .sum-table td.adjust{padding:5px 4px}
+.sum-table td.time{padding-left:10px}
 .adj-btn{width:20px;height:20px;border-radius:5px;border:1px solid var(--border);background:var(--card);color:var(--ink);font-size:12px;font-weight:800;cursor:pointer;line-height:1;margin:0 1px;padding:0}
 .adj-btn:active{background:var(--gold);color:#fff;border-color:var(--gold)}
 .sum-table td.time .date{color:var(--text);font-size:10px;font-weight:600}
@@ -150,6 +152,7 @@ label.field-label{font-size:11px;font-weight:800;color:var(--muted);text-transfo
 <!-- SCAN -->
 <div id="screen-scan" class="screen">
   <div class="app-header">
+    <button class="lock-btn" onclick="exitSession()" title="Lock &amp; end session">🔒</button>
     <h1>Scan Stock</h1>
     <div class="sub">Point the camera at a QR code or barcode</div>
   </div>
@@ -173,6 +176,7 @@ label.field-label{font-size:11px;font-weight:800;color:var(--muted);text-transfo
 <!-- SUMMARY -->
 <div id="screen-summary" class="screen">
   <div class="app-header">
+    <button class="lock-btn" onclick="exitSession()" title="Lock &amp; end session">🔒</button>
     <h1>Stock Summary</h1>
     <div class="sub">Live totals from your Google Sheet</div>
   </div>
@@ -188,6 +192,7 @@ label.field-label{font-size:11px;font-weight:800;color:var(--muted);text-transfo
 <!-- SETTINGS -->
 <div id="screen-settings" class="screen">
   <div class="app-header">
+    <button class="lock-btn" onclick="exitSession()" title="Lock &amp; end session">🔒</button>
     <h1>Settings</h1>
     <div class="sub">Connect your Google Sheet, manage PIN</div>
   </div>
@@ -299,13 +304,36 @@ function flashError(msg){
 }
 
 function lockApp(){
+  // Only persist the session count when we're actually leaving an unlocked
+  // session (deliberate lock-icon tap or the phone backgrounding). A plain
+  // app boot also calls lockApp() (see init()) but appUnlocked is still
+  // false then, so it must NOT overwrite a count saved by an earlier lock.
+  if(appUnlocked){
+    localStorage.setItem(SESSION_COUNT_KEY, String(sessionCount));
+    localStorage.setItem(SESSION_SAVED_FLAG, '1');
+  }
+  appUnlocked = false;
   document.getElementById('tab-bar').classList.add('hidden');
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById('screen-lock').classList.add('active');
   pinBuffer=''; renderDots();
   document.getElementById('lock-sub').textContent = localStorage.getItem('wys_pin_hash') ? 'Enter your PIN to continue' : 'Choose a 4-digit PIN';
 }
+function exitSession(){
+  if(!confirm('Lock the app and end this scan session?')) return;
+  lockApp();
+}
 function unlockApp(){
+  appUnlocked = true;
+  // Only the same PIN unlocking picks the saved count back up. If the app
+  // was force-closed while unlocked (no lock action taken), this flag was
+  // never set, so sessionCount stays at its fresh-boot value of 0.
+  if(localStorage.getItem(SESSION_SAVED_FLAG) === '1'){
+    sessionCount = Number(localStorage.getItem(SESSION_COUNT_KEY)) || 0;
+    document.getElementById('session-count').textContent = sessionCount;
+    localStorage.removeItem(SESSION_SAVED_FLAG);
+    localStorage.removeItem(SESSION_COUNT_KEY);
+  }
   document.getElementById('tab-bar').classList.remove('hidden');
   showScreen('screen-scan');
 }
@@ -366,6 +394,8 @@ function confirmClearAll(){
   if(confirm('Remove your PIN and Google Sheet link from this device?')){
     localStorage.removeItem('wys_pin_hash');
     localStorage.removeItem('wys_script_url');
+    localStorage.removeItem(SESSION_COUNT_KEY);
+    localStorage.removeItem(SESSION_SAVED_FLAG);
     location.reload();
   }
 }
@@ -379,6 +409,9 @@ let scanLocked = false;
 let sessionCount = 0;
 let lastScannedCode = null;
 let lastScannedAt = 0;
+let appUnlocked = false;
+const SESSION_COUNT_KEY = 'wys_session_count';
+const SESSION_SAVED_FLAG = 'wys_session_saved';
 
 const SCAN_PAUSE_MS = 2500;   // camera pause + result banner — one shared duration (real Aim time needs more than a flick)
 const FAST_REPEAT_MS = 3000;  // same code again within this window = probably the same physical box, not a new unit
@@ -659,14 +692,14 @@ async function loadSummary(){
     let latestCode = null, latestTime = '';
     items.forEach(it=>{ if(it.lastScanned && it.lastScanned > latestTime){ latestTime = it.lastScanned; latestCode = it.code; } });
 
-    const rows = items.map((it,i)=>{
+    const rows = items.map((it)=>{
       const brand = (PRODUCT_LOOKUP[it.code] && PRODUCT_LOOKUP[it.code].brand) || '—';
       const rowClass = it.code === latestCode ? ' class="latest"' : '';
       const safeCode = escapeHtml(it.code);
-      return `<tr${rowClass} data-code="${safeCode}"><td class="idx">${i+1}</td><td class="brand">${escapeHtml(brand)}</td><td class="code">${safeCode}</td><td class="qty">${it.qty}</td><td class="adjust"><button class="adj-btn" data-delta="-1">−</button><button class="adj-btn" data-delta="1">+</button></td><td class="time">${formatTime(it.lastScanned)}</td></tr>`;
+      return `<tr${rowClass} data-code="${safeCode}"><td class="brand">${escapeHtml(brand)}</td><td class="code">${safeCode}</td><td class="qty">${it.qty}</td><td class="adjust"><button class="adj-btn" data-delta="-1">−</button><button class="adj-btn" data-delta="1">+</button></td><td class="time">${formatTime(it.lastScanned)}</td></tr>`;
     }).join('');
     document.getElementById('summary-body').innerHTML =
-      `<table class="sum-table"><thead><tr><th>#</th><th>Brand</th><th>Code</th><th>Qty</th><th>Adjust</th><th>Last scanned</th></tr></thead><tbody>${rows}</tbody></table>`;
+      `<table class="sum-table"><thead><tr><th>Brand</th><th>Code</th><th>Qty</th><th>Adjust</th><th>Last scanned</th></tr></thead><tbody>${rows}</tbody></table>`;
   }catch(err){
     document.getElementById('summary-body').innerHTML = '<div class="empty-state">Could not load — check your Sheet link in Settings.</div>';
     console.error(err);
