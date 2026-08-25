@@ -99,11 +99,11 @@ label.field-label{font-size:11px;font-weight:800;color:var(--muted);text-transfo
 .sum-table{width:100%;border-collapse:collapse}
 .sum-table th{text-align:left;font-size:8px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);padding:0 4px 6px;font-weight:800;white-space:nowrap}
 .sum-table td{padding:7px 4px;font-size:11px;border-top:1px solid var(--border);white-space:nowrap}
-.sum-table td.brand{font-weight:800;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.2px;max-width:56px;overflow:hidden;text-overflow:ellipsis}
+.sum-table td.idx{color:var(--muted);font-weight:700;text-align:center}
 .sum-table td.code{font-weight:700;color:var(--text)}
 .sum-table td.qty{font-weight:800;color:var(--gold);text-align:center}
 .sum-table td.adjust{padding:5px 4px}
-.sum-table td.time{padding-left:10px}
+.sum-table td.time{padding-left:10px;text-align:right}
 .adj-btn{width:20px;height:20px;border-radius:5px;border:1px solid var(--border);background:var(--card);color:var(--ink);font-size:12px;font-weight:800;cursor:pointer;line-height:1;margin:0 1px;padding:0}
 .adj-btn:active{background:var(--gold);color:#fff;border-color:var(--gold)}
 .sum-table td.time .date{color:var(--text);font-size:10px;font-weight:600}
@@ -359,6 +359,9 @@ function showScreen(id){
 
   if(id === 'screen-settings'){
     document.getElementById('script-url-input').value = localStorage.getItem('wys_script_url') || '';
+  }
+  if(id === 'screen-summary'){
+    loadSummary();
   }
   if(id === 'screen-scan'){
     document.getElementById('scan-placeholder').style.display = getScriptUrl() ? 'none' : 'block';
@@ -692,14 +695,13 @@ async function loadSummary(){
     let latestCode = null, latestTime = '';
     items.forEach(it=>{ if(it.lastScanned && it.lastScanned > latestTime){ latestTime = it.lastScanned; latestCode = it.code; } });
 
-    const rows = items.map((it)=>{
-      const brand = (PRODUCT_LOOKUP[it.code] && PRODUCT_LOOKUP[it.code].brand) || '—';
+    const rows = items.map((it,i)=>{
       const rowClass = it.code === latestCode ? ' class="latest"' : '';
       const safeCode = escapeHtml(it.code);
-      return `<tr${rowClass} data-code="${safeCode}"><td class="brand">${escapeHtml(brand)}</td><td class="code">${safeCode}</td><td class="qty">${it.qty}</td><td class="adjust"><button class="adj-btn" data-delta="-1">−</button><button class="adj-btn" data-delta="1">+</button></td><td class="time">${formatTime(it.lastScanned)}</td></tr>`;
+      return `<tr${rowClass} data-code="${safeCode}"><td class="idx">${i+1}</td><td class="code">${safeCode}</td><td class="qty">${it.qty}</td><td class="adjust"><button class="adj-btn" data-delta="-1">−</button><button class="adj-btn" data-delta="1">+</button></td><td class="time">${formatTime(it.lastScanned)}</td></tr>`;
     }).join('');
     document.getElementById('summary-body').innerHTML =
-      `<table class="sum-table"><thead><tr><th>Brand</th><th>Code</th><th>Qty</th><th>Adjust</th><th>Last scanned</th></tr></thead><tbody>${rows}</tbody></table>`;
+      `<table class="sum-table"><thead><tr><th>#</th><th>Code</th><th>Qty</th><th>Adjust</th><th>Scanned</th></tr></thead><tbody>${rows}</tbody></table>`;
   }catch(err){
     document.getElementById('summary-body').innerHTML = '<div class="empty-state">Could not load — check your Sheet link in Settings.</div>';
     console.error(err);
