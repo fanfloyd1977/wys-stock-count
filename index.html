@@ -581,6 +581,18 @@ function playTick(){
   o.start(t); o.stop(t+.05);
 }
 
+// Generic UI click — soft, short, distinct from the scan-related sounds above.
+// Wired to every button/tab in the app via a single delegated listener (below).
+function playClick(){
+  const ctx = actx();
+  const o=ctx.createOscillator(), g=ctx.createGain();
+  o.type='sine'; o.frequency.value=800;
+  o.connect(g); g.connect(ctx.destination);
+  const t=ctx.currentTime;
+  g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(.08,t+.004); g.gain.exponentialRampToValueAtTime(.001,t+.04);
+  o.start(t); o.stop(t+.04);
+}
+
 function playChime(){
   const ctx = actx();
   [523,659,784].forEach((f,i)=>{
@@ -689,6 +701,13 @@ function formatTime(iso){
 function init(){
   lockApp();
 }
+
+// One listener covers every button and tab in the app (PIN pad, tabs, Start
+// Camera, Undo, Summary +/-, Settings buttons, etc.) — no need to wire sound
+// into each one individually.
+document.addEventListener('click', function(e){
+  if(e.target.closest('button, .tab')) playClick();
+}, true);
 window.addEventListener('load', init);
 window.addEventListener('pageshow', lockApp);
 document.addEventListener('visibilitychange', ()=>{ if(document.hidden){ stopScanner(); lockApp(); } });
