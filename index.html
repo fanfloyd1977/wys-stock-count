@@ -78,8 +78,9 @@ label.field-label{font-size:11px;font-weight:800;color:var(--muted);text-transfo
 .scan-placeholder{background:var(--card);border-radius:var(--radius);border:1px dashed var(--border);padding:40px 20px;text-align:center;color:var(--muted);font-size:14px}
 .result-banner{border-radius:14px;padding:16px;margin:0 16px 6px;font-size:14px;font-weight:700;display:none;align-items:center;gap:10px}
 .result-banner.show{display:flex}
-.result-banner.new{background:var(--green-light);color:var(--green);border:1.5px solid var(--green)}
-.result-banner.dup{background:var(--red-light);color:var(--red);border:1.5px solid var(--red)}
+.result-banner.ok{background:var(--green-light);color:var(--green);border:1.5px solid var(--green)}
+.result-banner.caution{background:var(--red-light);color:var(--red);border:1.5px solid var(--red)}
+#reader.paused{opacity:.55}
 .result-icon{font-size:22px}
 .today-stat{display:flex;justify-content:space-between;align-items:center;padding:0 20px;margin:2px 0 10px;font-size:12px;color:var(--muted);font-weight:600}
 .today-stat b{color:var(--ink);font-size:14px}
@@ -362,6 +363,11 @@ let html5QrCode = null;
 let scannerRunning = false;
 let scanLocked = false;
 let sessionCount = 0;
+let lastScannedCode = null;
+let lastScannedAt = 0;
+
+const SCAN_PAUSE_MS = 1400;   // camera pause + result banner — one shared duration
+const FAST_REPEAT_MS = 3000;  // same code again within this window = probably the same physical box, not a new unit
 
 function toggleScanner(){
   if(!getScriptUrl()){
@@ -410,10 +416,26 @@ function stopScanner(){
 function onScanSuccess(decodedText){
   if(scanLocked) return;
   scanLocked = true;
-  postScan(decodedText.trim());
+  const code = decodedText.trim();
+
+  // Instant local "read" beep — fires the moment the camera decodes something,
+  // before waiting on the network. This is the thing a physical scan gun gives
+  // you for free; our old version only beeped after the Sheet responded.
+  playTick();
+
+  // Freeze the camera view so it's visually obvious scanning is paused —
+  // no more "did that already count the next item too?" ambiguity.
+  if(html5QrCode) html5QrCode.pause(true);
+  document.getElementById('reader').classList.add('paused');
+
+  postScan(code);
 }
 
 async function postScan(code){
+  const isFastRepeat = (code === lastScannedCode) && (Date.now() - lastScannedAt < FAST_REPEAT_MS);
+  lastScannedCode = code;
+  lastScannedAt = Date.now();
+
   try{
     const res = await fetch(getScriptUrl(), {
       method: 'POST',
@@ -425,11 +447,18 @@ async function postScan(code){
     document.getElementById('session-count').textContent = sessionCount;
 
     if(data.status === 'new'){
-      showResult('new', '✓', `New item — ${code}`);
-      playChime(true);
+      showResult('ok', '✓', `Counted — ${code}`);
+      playChime();
+    } else if(data.status === 'duplicate' && isFastRepeat){
+      // Same code, scanned again within a couple seconds — most likely the
+      // camera re-reading the same physical box still in frame, not a new unit.
+      showResult('caution', '!', `Scanned twice quickly — ${code}, check it's really 2 units (now ${data.qty})`);
+      playAlarm();
     } else if(data.status === 'duplicate'){
-      showResult('dup', '⚠', `Already counted — ${code} · qty now ${data.qty}`);
-      playChime(false);
+      // Normal, expected case while counting multiple units of the same product —
+      // no alarm styling, this is a success just like a first-time scan.
+      showResult('ok', '✓', `Counted — ${code} · now ${data.qty}`);
+      playChime();
     } else {
       showToast(data.message || 'Something went wrong', 'error');
     }
@@ -437,7 +466,11 @@ async function postScan(code){
     showToast('Could not reach your Sheet — check connection', 'error');
     console.error(err);
   } finally {
-    setTimeout(()=>{ scanLocked = false; }, 1200);
+    setTimeout(()=>{
+      scanLocked = false;
+      document.getElementById('reader').classList.remove('paused');
+      if(html5QrCode && scannerRunning) html5QrCode.resume();
+    }, SCAN_PAUSE_MS);
   }
 }
 
@@ -446,36 +479,49 @@ function showResult(kind, icon, text){
   banner.className = 'result-banner show ' + kind;
   document.getElementById('result-icon').textContent = icon;
   document.getElementById('result-text').textContent = text;
-  setTimeout(()=>{ banner.className = 'result-banner'; }, 2600);
+  setTimeout(()=>{ banner.className = 'result-banner'; }, SCAN_PAUSE_MS);
 }
 
 // ════════════════════════════════════════════════════════════
-// SOUND  (Web Audio oscillators — new-item chime vs duplicate alarm)
+// SOUND  (Web Audio oscillators)
+// playTick   — instant, fires the moment a code is read (no network wait)
+// playChime  — success confirmation once the Sheet responds (new or normal repeat)
+// playAlarm  — caution: same code scanned again within a couple seconds
 // ════════════════════════════════════════════════════════════
 let _actx = null;
 function actx(){ if(!_actx) _actx = new (window.AudioContext||window.webkitAudioContext)(); return _actx; }
 
-function playChime(isNew){
+function playTick(){
   const ctx = actx();
-  if(isNew){
-    [523,659,784].forEach((f,i)=>{
-      const o=ctx.createOscillator(), g=ctx.createGain();
-      o.type='sine'; o.frequency.value=f;
-      o.connect(g); g.connect(ctx.destination);
-      const t=ctx.currentTime + i*0.07;
-      g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(.18,t+.02); g.gain.exponentialRampToValueAtTime(.001,t+.3);
-      o.start(t); o.stop(t+.3);
-    });
-  } else {
-    // duplicate alarm — two short low buzzes
-    for(let i=0;i<2;i++){
-      const o=ctx.createOscillator(), g=ctx.createGain();
-      o.type='sawtooth'; o.frequency.value=220;
-      o.connect(g); g.connect(ctx.destination);
-      const t=ctx.currentTime + i*0.22;
-      g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(.16,t+.02); g.gain.exponentialRampToValueAtTime(.001,t+.16);
-      o.start(t); o.stop(t+.16);
-    }
+  const o=ctx.createOscillator(), g=ctx.createGain();
+  o.type='square'; o.frequency.value=1400;
+  o.connect(g); g.connect(ctx.destination);
+  const t=ctx.currentTime;
+  g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(.12,t+.005); g.gain.exponentialRampToValueAtTime(.001,t+.05);
+  o.start(t); o.stop(t+.05);
+}
+
+function playChime(){
+  const ctx = actx();
+  [523,659,784].forEach((f,i)=>{
+    const o=ctx.createOscillator(), g=ctx.createGain();
+    o.type='sine'; o.frequency.value=f;
+    o.connect(g); g.connect(ctx.destination);
+    const t=ctx.currentTime + i*0.07;
+    g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(.18,t+.02); g.gain.exponentialRampToValueAtTime(.001,t+.3);
+    o.start(t); o.stop(t+.3);
+  });
+}
+
+function playAlarm(){
+  const ctx = actx();
+  for(let i=0;i<2;i++){
+    const o=ctx.createOscillator(), g=ctx.createGain();
+    o.type='sawtooth'; o.frequency.value=220;
+    o.connect(g); g.connect(ctx.destination);
+    const t=ctx.currentTime + i*0.22;
+    g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(.16,t+.02); g.gain.exponentialRampToValueAtTime(.001,t+.16);
+    o.start(t); o.stop(t+.16);
   }
 }
 
