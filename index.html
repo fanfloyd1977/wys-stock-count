@@ -89,12 +89,17 @@ label.field-label{font-size:11px;font-weight:800;color:var(--muted);text-transfo
 .summary-head{display:flex;justify-content:space-between;align-items:center;padding:0 4px 12px}
 .summary-total{font-size:13px;color:var(--muted);font-weight:600}
 .summary-total b{color:var(--ink);font-size:16px}
+.table-scroll{overflow-x:auto}
 .sum-table{width:100%;border-collapse:collapse}
-.sum-table th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:0 10px 8px;font-weight:800}
-.sum-table td{padding:10px;font-size:13px;border-top:1px solid var(--border)}
+.sum-table th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:0 10px 8px;font-weight:800;white-space:nowrap}
+.sum-table td{padding:10px;font-size:13px;border-top:1px solid var(--border);white-space:nowrap}
+.sum-table td.idx{color:var(--muted);font-weight:700;text-align:center}
+.sum-table td.brand{font-weight:800;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.3px}
 .sum-table td.code{font-weight:700;color:var(--text)}
 .sum-table td.qty{font-weight:800;color:var(--gold);text-align:center}
 .sum-table td.time{color:var(--muted);font-size:11px}
+.sum-table tr.latest{background:var(--green-light)}
+.sum-table tr.latest td.code{color:var(--green)}
 .empty-state{text-align:center;padding:48px 20px;color:var(--muted);font-size:14px}
 .empty-state .es-icon{font-size:40px;margin-bottom:10px}
 
@@ -164,10 +169,10 @@ label.field-label{font-size:11px;font-weight:800;color:var(--muted);text-transfo
   </div>
   <div class="card">
     <div class="summary-head">
-      <div class="summary-total">Total units <b id="summary-total">—</b></div>
+      <div class="summary-total">Total units <b id="summary-total">—</b> · <span id="summary-skus">0</span> codes</div>
       <button class="btn btn-outline btn-sm" style="width:auto" onclick="loadSummary()">Refresh</button>
     </div>
-    <div id="summary-body"><div class="empty-state"><div class="es-icon">📋</div>Tap Refresh to load stock counts.</div></div>
+    <div id="summary-body" class="table-scroll"><div class="empty-state"><div class="es-icon">📋</div>Tap Refresh to load stock counts.</div></div>
   </div>
 </div>
 
@@ -532,6 +537,22 @@ function playAlarm(){
 // ════════════════════════════════════════════════════════════
 // SUMMARY
 // ════════════════════════════════════════════════════════════
+// Demo-only brand lookup, matching sample-codes.html's SAMPLES list — no real
+// vendor product database exists yet. Replace with real data once the client's
+// actual product codes/brands are known.
+const PRODUCT_LOOKUP = {
+  'DEMO-ERCO-001':   { brand: 'ERCO' },
+  'DEMO-BEGA-002':   { brand: 'BEGA' },
+  'DEMO-VIABZ-003':  { brand: 'VIABIZZUNO' },
+  'DEMO-VIBIA-004':  { brand: 'VIBIA' },
+  'DEMO-DELTA-005':  { brand: 'DELTA LIGHT' },
+  'DEMO-AQF-006':    { brand: 'AQForm' },
+  'DEMO-ORL-007':    { brand: 'ORLUNA' },
+  'DEMO-LEDLIN-008': { brand: 'LED LINEAR' },
+  'DEMO-DGA-009':    { brand: 'DGA' },
+  'DEMO-LLG-010':    { brand: 'LINEA LIGHT GROUP' }
+};
+
 async function loadSummary(){
   if(!getScriptUrl()){
     showToast('Connect your Google Sheet in Settings first', 'error');
@@ -543,17 +564,25 @@ async function loadSummary(){
     const res = await fetch(getScriptUrl());
     const data = await res.json();
     document.getElementById('summary-total').textContent = data.total ?? 0;
+    document.getElementById('summary-skus').textContent = data.items ? data.items.length : 0;
     if(!data.items || !data.items.length){
       document.getElementById('summary-body').innerHTML = '<div class="empty-state"><div class="es-icon">📋</div>No scans yet.</div>';
       return;
     }
-    const rows = data.items
-      .slice()
-      .sort((a,b)=> (b.lastScanned||'').localeCompare(a.lastScanned||''))
-      .map(it=>`<tr><td class="code">${escapeHtml(it.code)}</td><td class="qty">${it.qty}</td><td class="time">${formatTime(it.lastScanned)}</td></tr>`)
-      .join('');
+    // Same order as the Google Sheet (doGet returns rows top-to-bottom, no
+    // re-sorting here) — the most-recently-scanned row is highlighted
+    // separately instead of being moved to the top.
+    const items = data.items;
+    let latestCode = null, latestTime = '';
+    items.forEach(it=>{ if(it.lastScanned && it.lastScanned > latestTime){ latestTime = it.lastScanned; latestCode = it.code; } });
+
+    const rows = items.map((it,i)=>{
+      const brand = (PRODUCT_LOOKUP[it.code] && PRODUCT_LOOKUP[it.code].brand) || '—';
+      const rowClass = it.code === latestCode ? ' class="latest"' : '';
+      return `<tr${rowClass}><td class="idx">${i+1}</td><td class="brand">${escapeHtml(brand)}</td><td class="code">${escapeHtml(it.code)}</td><td class="qty">${it.qty}</td><td class="time">${formatTime(it.lastScanned)}</td></tr>`;
+    }).join('');
     document.getElementById('summary-body').innerHTML =
-      `<table class="sum-table"><thead><tr><th>Code</th><th>Qty</th><th>Last scanned</th></tr></thead><tbody>${rows}</tbody></table>`;
+      `<table class="sum-table"><thead><tr><th>#</th><th>Brand</th><th>Code</th><th>Qty</th><th>Last scanned</th></tr></thead><tbody>${rows}</tbody></table>`;
   }catch(err){
     document.getElementById('summary-body').innerHTML = '<div class="empty-state">Could not load — check your Sheet link in Settings.</div>';
     console.error(err);
@@ -565,7 +594,7 @@ function formatTime(iso){
   if(!iso) return '—';
   const d = new Date(iso);
   if(isNaN(d)) return '—';
-  return d.toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  return d.toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
 }
 
 // ════════════════════════════════════════════════════════════
