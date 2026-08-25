@@ -100,6 +100,7 @@ label.field-label{font-size:11px;font-weight:800;color:var(--muted);text-transfo
 .sum-table th{text-align:left;font-size:8px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);padding:0 4px 6px;font-weight:800;white-space:nowrap}
 .sum-table td{padding:7px 4px;font-size:11px;border-top:1px solid var(--border);white-space:nowrap}
 .sum-table td.idx{color:var(--muted);font-weight:700;text-align:center}
+.sum-table td.brand{font-weight:800;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.2px;max-width:42px;overflow:hidden;text-overflow:ellipsis}
 .sum-table td.code{font-weight:700;color:var(--text)}
 .sum-table td.qty{font-weight:800;color:var(--gold);text-align:center}
 .sum-table td.adjust{padding:5px 4px}
@@ -304,15 +305,6 @@ function flashError(msg){
 }
 
 function lockApp(){
-  // Only persist the session count when we're actually leaving an unlocked
-  // session (deliberate lock-icon tap or the phone backgrounding). A plain
-  // app boot also calls lockApp() (see init()) but appUnlocked is still
-  // false then, so it must NOT overwrite a count saved by an earlier lock.
-  if(appUnlocked){
-    localStorage.setItem(SESSION_COUNT_KEY, String(sessionCount));
-    localStorage.setItem(SESSION_SAVED_FLAG, '1');
-  }
-  appUnlocked = false;
   document.getElementById('tab-bar').classList.add('hidden');
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById('screen-lock').classList.add('active');
@@ -321,19 +313,11 @@ function lockApp(){
 }
 function exitSession(){
   if(!confirm('Lock the app and end this scan session?')) return;
+  sessionCount = 0;
+  document.getElementById('session-count').textContent = sessionCount;
   lockApp();
 }
 function unlockApp(){
-  appUnlocked = true;
-  // Only the same PIN unlocking picks the saved count back up. If the app
-  // was force-closed while unlocked (no lock action taken), this flag was
-  // never set, so sessionCount stays at its fresh-boot value of 0.
-  if(localStorage.getItem(SESSION_SAVED_FLAG) === '1'){
-    sessionCount = Number(localStorage.getItem(SESSION_COUNT_KEY)) || 0;
-    document.getElementById('session-count').textContent = sessionCount;
-    localStorage.removeItem(SESSION_SAVED_FLAG);
-    localStorage.removeItem(SESSION_COUNT_KEY);
-  }
   document.getElementById('tab-bar').classList.remove('hidden');
   showScreen('screen-scan');
 }
@@ -397,8 +381,6 @@ function confirmClearAll(){
   if(confirm('Remove your PIN and Google Sheet link from this device?')){
     localStorage.removeItem('wys_pin_hash');
     localStorage.removeItem('wys_script_url');
-    localStorage.removeItem(SESSION_COUNT_KEY);
-    localStorage.removeItem(SESSION_SAVED_FLAG);
     location.reload();
   }
 }
@@ -412,9 +394,6 @@ let scanLocked = false;
 let sessionCount = 0;
 let lastScannedCode = null;
 let lastScannedAt = 0;
-let appUnlocked = false;
-const SESSION_COUNT_KEY = 'wys_session_count';
-const SESSION_SAVED_FLAG = 'wys_session_saved';
 
 const SCAN_PAUSE_MS = 2500;   // camera pause + result banner — one shared duration (real Aim time needs more than a flick)
 const FAST_REPEAT_MS = 3000;  // same code again within this window = probably the same physical box, not a new unit
@@ -696,12 +675,13 @@ async function loadSummary(){
     items.forEach(it=>{ if(it.lastScanned && it.lastScanned > latestTime){ latestTime = it.lastScanned; latestCode = it.code; } });
 
     const rows = items.map((it,i)=>{
+      const brand = (PRODUCT_LOOKUP[it.code] && PRODUCT_LOOKUP[it.code].brand) || '—';
       const rowClass = it.code === latestCode ? ' class="latest"' : '';
       const safeCode = escapeHtml(it.code);
-      return `<tr${rowClass} data-code="${safeCode}"><td class="idx">${i+1}</td><td class="code">${safeCode}</td><td class="qty">${it.qty}</td><td class="adjust"><button class="adj-btn" data-delta="-1">−</button><button class="adj-btn" data-delta="1">+</button></td><td class="time">${formatTime(it.lastScanned)}</td></tr>`;
+      return `<tr${rowClass} data-code="${safeCode}"><td class="idx">${i+1}</td><td class="brand">${escapeHtml(brand)}</td><td class="code">${safeCode}</td><td class="qty">${it.qty}</td><td class="adjust"><button class="adj-btn" data-delta="-1">−</button><button class="adj-btn" data-delta="1">+</button></td><td class="time">${formatTime(it.lastScanned)}</td></tr>`;
     }).join('');
     document.getElementById('summary-body').innerHTML =
-      `<table class="sum-table"><thead><tr><th>#</th><th>Code</th><th>Qty</th><th>Adjust</th><th>Scanned</th></tr></thead><tbody>${rows}</tbody></table>`;
+      `<table class="sum-table"><thead><tr><th>#</th><th>Brand</th><th>Code</th><th>Qty</th><th>Adjust</th><th>Scanned</th></tr></thead><tbody>${rows}</tbody></table>`;
   }catch(err){
     document.getElementById('summary-body').innerHTML = '<div class="empty-state">Could not load — check your Sheet link in Settings.</div>';
     console.error(err);
