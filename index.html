@@ -424,23 +424,44 @@ function onScanSuccess(decodedText){
   const code = decodedText.trim();
 
   // Instant local "read" beep — fires the moment the camera decodes something,
-  // before waiting on the network. This is the thing a physical scan gun gives
-  // you for free; our old version only beeped after the Sheet responded.
+  // before waiting on the network.
   playTick();
 
-  // Freeze the camera view so it's visually obvious scanning is paused —
-  // no more "did that already count the next item too?" ambiguity.
+  // Freeze the camera view so it's visually obvious scanning is paused.
   if(html5QrCode) html5QrCode.pause(true);
   document.getElementById('reader').classList.add('paused');
 
-  postScan(code);
-}
-
-async function postScan(code){
+  // Fast-repeat check needs no server round trip — we already know locally
+  // whether this exact code was just scanned a couple seconds ago.
   const isFastRepeat = (code === lastScannedCode) && (Date.now() - lastScannedAt < FAST_REPEAT_MS);
   lastScannedCode = code;
   lastScannedAt = Date.now();
 
+  // Show the result and resume the camera on a fixed timer — NOT gated on
+  // the Sheet round trip. Apps Script is inherently a few seconds slow; that
+  // used to hold up the whole scan cycle. The Sheet write still happens, just
+  // silently in the background (see syncScan below). Exact quantities are
+  // always available on the Summary tab.
+  if(isFastRepeat){
+    showResult('caution', '!', `Scanned twice quickly — ${code}, check it's really 2 units`);
+    playAlarm();
+  } else {
+    showResult('ok', '✓', `Counted — ${code}`);
+    playChime();
+  }
+  sessionCount++;
+  document.getElementById('session-count').textContent = sessionCount;
+
+  setTimeout(()=>{
+    scanLocked = false;
+    document.getElementById('reader').classList.remove('paused');
+    if(html5QrCode && scannerRunning) html5QrCode.resume();
+  }, SCAN_PAUSE_MS);
+
+  syncScan(code);
+}
+
+async function syncScan(code){
   try{
     const res = await fetch(getScriptUrl(), {
       method: 'POST',
@@ -448,34 +469,12 @@ async function postScan(code){
       body: JSON.stringify({ code })
     });
     const data = await res.json();
-    sessionCount++;
-    document.getElementById('session-count').textContent = sessionCount;
-
-    if(data.status === 'new'){
-      showResult('ok', '✓', `Counted — ${code}`);
-      playChime();
-    } else if(data.status === 'duplicate' && isFastRepeat){
-      // Same code, scanned again within a couple seconds — most likely the
-      // camera re-reading the same physical box still in frame, not a new unit.
-      showResult('caution', '!', `Scanned twice quickly — ${code}, check it's really 2 units (now ${data.qty})`);
-      playAlarm();
-    } else if(data.status === 'duplicate'){
-      // Normal, expected case while counting multiple units of the same product —
-      // no alarm styling, this is a success just like a first-time scan.
-      showResult('ok', '✓', `Counted — ${code} · now ${data.qty}`);
-      playChime();
-    } else {
-      showToast(data.message || 'Something went wrong', 'error');
+    if(data.status !== 'new' && data.status !== 'duplicate'){
+      showToast(data.message || 'Sync issue with your Sheet', 'error');
     }
   }catch(err){
     showToast('Could not reach your Sheet — check connection', 'error');
     console.error(err);
-  } finally {
-    setTimeout(()=>{
-      scanLocked = false;
-      document.getElementById('reader').classList.remove('paused');
-      if(html5QrCode && scannerRunning) html5QrCode.resume();
-    }, SCAN_PAUSE_MS);
   }
 }
 
