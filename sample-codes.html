@@ -7,8 +7,13 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
   body{font-family:Inter,Arial,sans-serif;background:#f7f4ee;margin:0;padding:24px;color:#201c17}
+  .page-header{display:flex;gap:20px;align-items:flex-start;margin-bottom:24px;flex-wrap:wrap}
+  .app-link-card{background:#171310;border-radius:14px;padding:14px;text-align:center;flex-shrink:0;width:150px}
+  .app-link-card .qr-box img,.app-link-card .qr-box canvas{width:100%;height:auto;border-radius:6px}
+  .app-link-card .label{color:#e6c878;font-size:11px;font-weight:800;margin-top:8px;letter-spacing:.3px}
+  .app-link-card .url{color:rgba(255,255,255,.55);font-size:9px;margin-top:2px;word-break:break-all}
   h1{font-size:20px;margin-bottom:4px}
-  p.note{color:#8a7d68;font-size:13px;margin-bottom:24px;max-width:560px}
+  p.note{color:#8a7d68;font-size:13px;margin-bottom:0;max-width:560px}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:18px}
   .card{background:#fff;border:1px solid #e6ded0;border-radius:14px;padding:14px;text-align:center}
   .card .qr-box{display:flex;justify-content:center}
@@ -19,13 +24,25 @@
 </style>
 </head>
 <body>
-<h1>WYS — Sample Test Codes</h1>
-<p class="note">
-  These are <b>fictional demo SKUs</b> for testing the scanner only — not real vendor barcodes.
-  Brand names are the real Palicon-listed lighting brands (palicon.co.th/our-business/premium-selection);
-  model numbers and codes below are made up for this test. Scan any of these with the WYS app to try it out.
-  Once real vendor codes are available, this page won't be needed.
-</p>
+<div class="page-header">
+  <div class="app-link-card">
+    <div class="qr-box" id="app-qr"></div>
+    <div class="label">📱 Open the app</div>
+    <div class="url">fanfloyd1977.github.io/wys-stock-count</div>
+  </div>
+  <div>
+    <h1>WYS — Sample Test Codes</h1>
+    <p class="note">
+      These are <b>fictional demo SKUs</b> for testing the scanner only — not real vendor barcodes.
+      Brand names are the real Palicon-listed lighting brands (palicon.co.th/our-business/premium-selection);
+      model numbers and codes below are made up for this test. Scan any of these with the WYS app to try it out.
+      Once real vendor codes are available, this page won't be needed.
+      <br><br>
+      <b>Note:</b> the QR in the dark box on the left opens the app itself — scan it with your phone's regular
+      camera, not from inside the WYS scanner (it's a link, not a product code).
+    </p>
+  </div>
+</div>
 <div class="grid" id="grid"></div>
 
 <script>
@@ -41,6 +58,15 @@ const SAMPLES = [
   { brand: "DGA",                model: "Track Spot 3C",            code: "DEMO-DGA-009"  },
   { brand: "LINEA LIGHT GROUP",  model: "Cover Flap Strip",         code: "DEMO-LLG-010"  }
 ];
+
+new QRCode(document.getElementById('app-qr'), {
+  text: 'https://fanfloyd1977.github.io/wys-stock-count/',
+  width: 200,
+  height: 200,
+  colorDark: '#171310',
+  colorLight: '#ffffff',
+  correctLevel: QRCode.CorrectLevel.M
+});
 
 const grid = document.getElementById('grid');
 SAMPLES.forEach(item => {
