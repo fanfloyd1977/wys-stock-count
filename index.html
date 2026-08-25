@@ -366,7 +366,7 @@ let sessionCount = 0;
 let lastScannedCode = null;
 let lastScannedAt = 0;
 
-const SCAN_PAUSE_MS = 1400;   // camera pause + result banner — one shared duration
+const SCAN_PAUSE_MS = 2500;   // camera pause + result banner — one shared duration (real Aim time needs more than a flick)
 const FAST_REPEAT_MS = 3000;  // same code again within this window = probably the same physical box, not a new unit
 
 function toggleScanner(){
@@ -388,7 +388,15 @@ function startScanner(){
     // barcodes, not QR (still an open question) — re-add EAN/UPC/Code128/Code39
     // to this list once that's confirmed, and re-check Read speed at that point.
     formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ],
-    experimentalFeatures: { useBarCodeDetectorIfSupported: true }
+    experimentalFeatures: { useBarCodeDetectorIfSupported: true },
+    // Lower resolution = far less pixel data to decode per frame — the likely
+    // real cause of the 3-5s Read delay, more than format count. 480p is plenty
+    // for a QR code held at normal scanning distance.
+    videoConstraints: {
+      facingMode: "environment",
+      width: { ideal: 640 },
+      height: { ideal: 480 }
+    }
   };
   html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess, ()=>{})
     .then(()=>{
