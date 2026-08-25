@@ -381,17 +381,14 @@ function toggleScanner(){
 function startScanner(){
   html5QrCode = new Html5Qrcode("reader");
   const config = {
-    fps: 10,
+    fps: 15,
     qrbox: { width: 240, height: 240 },
-    formatsToSupport: [
-      Html5QrcodeSupportedFormats.QR_CODE,
-      Html5QrcodeSupportedFormats.EAN_13,
-      Html5QrcodeSupportedFormats.EAN_8,
-      Html5QrcodeSupportedFormats.UPC_A,
-      Html5QrcodeSupportedFormats.UPC_E,
-      Html5QrcodeSupportedFormats.CODE_128,
-      Html5QrcodeSupportedFormats.CODE_39
-    ]
+    // QR-only for now — testing 7 formats per frame was the likely cause of the
+    // 3-5s Read delay once the green box locked on. Real vendor codes might be
+    // barcodes, not QR (still an open question) — re-add EAN/UPC/Code128/Code39
+    // to this list once that's confirmed, and re-check Read speed at that point.
+    formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ],
+    experimentalFeatures: { useBarCodeDetectorIfSupported: true }
   };
   html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess, ()=>{})
     .then(()=>{
