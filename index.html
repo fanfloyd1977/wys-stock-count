@@ -90,6 +90,7 @@ label.field-label{font-size:11px;font-weight:800;color:var(--muted);text-transfo
 .result-icon{font-size:22px}
 .today-stat{display:flex;justify-content:space-between;align-items:center;padding:0 20px;margin:2px 0 10px;font-size:12px;color:var(--muted);font-weight:600}
 .today-stat b{color:var(--ink);font-size:14px}
+.pending-badge{margin:-4px 20px 10px;font-size:11px;font-weight:700;color:var(--red);background:var(--red-light);border-radius:8px;padding:5px 10px;text-align:center}
 
 /* SUMMARY */
 .summary-head{display:flex;justify-content:space-between;align-items:center;padding:0 4px 12px}
@@ -158,6 +159,7 @@ label.field-label{font-size:11px;font-weight:800;color:var(--muted);text-transfo
     <div class="sub">Point the camera at a QR code or barcode</div>
   </div>
   <div class="today-stat"><span>Scanned this session</span><b id="session-count">0</b></div>
+  <div class="pending-badge" id="pending-badge" style="display:none"></div>
   <div class="result-banner" id="result-banner">
     <span class="result-icon" id="result-icon">✓</span>
     <span id="result-text">—</span>
@@ -320,6 +322,7 @@ function exitSession(){
 function unlockApp(){
   document.getElementById('tab-bar').classList.remove('hidden');
   showScreen('screen-scan');
+  flushQueue();
 }
 function startChangePin(){
   pinMode = 'create';
@@ -345,6 +348,7 @@ function showScreen(id){
     document.getElementById('script-url-input').value = localStorage.getItem('wys_script_url') || '';
   }
   if(id === 'screen-summary'){
+    flushQueue();
     loadSummary();
   }
   if(id === 'screen-scan'){
@@ -488,7 +492,7 @@ function onScanSuccess(decodedText){
     if(html5QrCode && scannerRunning) html5QrCode.resume();
   }, SCAN_PAUSE_MS);
 
-  syncScan(code);
+  queueScan(code);
 }
 
 // ════════════════════════════════════════════════════════════
@@ -525,20 +529,71 @@ function handleUndo(){
   adjustQty(code, -1, { message: `Undone: ${code} ✓` });
 }
 
-async function syncScan(code){
+// ════════════════════════════════════════════════════════════
+// STORE AND FORWARD — every scan is saved on the phone first, always,
+// then forwarded to the Sheet immediately. If forwarding fails (offline),
+// it just stays saved and gets retried later — nothing is ever lost.
+// See project notes for the offline-outage discussion this came from.
+// ════════════════════════════════════════════════════════════
+const PENDING_QUEUE_KEY = 'wys_pending_queue';
+
+function loadQueue(){
+  try{ return JSON.parse(localStorage.getItem(PENDING_QUEUE_KEY)) || []; }
+  catch(err){ return []; }
+}
+function saveQueue(q){
+  localStorage.setItem(PENDING_QUEUE_KEY, JSON.stringify(q));
+  const badge = document.getElementById('pending-badge');
+  if(!badge) return;
+  if(q.length > 0){
+    badge.textContent = `⏳ ${q.length} scan${q.length>1?'s':''} waiting to sync`;
+    badge.style.display = 'block';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function queueScan(code){
+  const wasEmpty = loadQueue().length === 0;
+  const q = loadQueue();
+  q.push({ code });
+  saveQueue(q);
+  flushQueue(wasEmpty);
+}
+
+let flushing = false;
+async function flushQueue(showOfflineToast){
+  if(flushing) return;
+  flushing = true;
+  const startLen = loadQueue().length;
   try{
-    const res = await fetch(getScriptUrl(), {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ code })
-    });
-    const data = await res.json();
-    if(data.status !== 'new' && data.status !== 'duplicate'){
-      showToast(data.message || 'Sync issue with your Sheet', 'error');
+    let q = loadQueue();
+    while(q.length){
+      const item = q[0];
+      let ok = false;
+      try{
+        const res = await fetch(getScriptUrl(), {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ code: item.code })
+        });
+        const data = await res.json();
+        ok = (data.status === 'new' || data.status === 'duplicate');
+      }catch(err){ ok = false; }
+      if(ok){
+        q.shift();
+        saveQueue(q);
+      } else {
+        break;
+      }
     }
-  }catch(err){
-    showToast('Could not reach your Sheet — check connection', 'error');
-    console.error(err);
+    if(startLen > 0 && q.length === 0){
+      showToast(`✓ Synced ${startLen} scan${startLen>1?'s':''}`, 'success');
+    } else if(q.length > 0 && showOfflineToast){
+      showToast('Saved on phone — will sync when back online', 'error');
+    }
+  } finally {
+    flushing = false;
   }
 }
 
@@ -714,6 +769,7 @@ function formatTime(iso){
 // INIT
 // ════════════════════════════════════════════════════════════
 function init(){
+  saveQueue(loadQueue()); // restore the pending-sync badge from any earlier session
   lockApp();
 }
 
@@ -725,7 +781,8 @@ document.addEventListener('click', function(e){
 }, true);
 window.addEventListener('load', init);
 window.addEventListener('pageshow', lockApp);
-document.addEventListener('visibilitychange', ()=>{ if(document.hidden){ stopScanner(); lockApp(); } });
+window.addEventListener('online', ()=>flushQueue());
+document.addEventListener('visibilitychange', ()=>{ if(document.hidden){ stopScanner(); lockApp(); } else { flushQueue(); } });
 </script>
 </div>
 </body>
