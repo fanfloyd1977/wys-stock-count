@@ -45,6 +45,9 @@ h1,h2,.serif{font-family:'Playfair Display',serif}
 .app-header .sub{font-size:12px;color:var(--gold2);margin-top:3px;letter-spacing:.4px;text-transform:uppercase}
 .lock-btn{position:absolute;top:14px;right:16px;width:32px;height:32px;border-radius:50%;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:#fff;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center}
 .lock-btn:active{background:rgba(255,255,255,.2)}
+.net-status{position:absolute;top:18px;left:20px;display:flex;align-items:center;gap:5px;font-size:10px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;color:rgba(255,255,255,.75)}
+.net-status .dot{width:7px;height:7px;border-radius:50%;background:var(--green);box-shadow:0 0 0 3px rgba(63,143,95,.25)}
+.net-status.offline .dot{background:var(--red);box-shadow:0 0 0 3px rgba(192,69,63,.25)}
 
 .card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow-sm);padding:18px;margin:14px 16px;border:1px solid var(--border)}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:none;border-radius:14px;font-family:'Inter',sans-serif;font-size:15px;font-weight:700;cursor:pointer;padding:13px 20px;min-height:48px;transition:transform .12s,opacity .12s;width:100%}
@@ -90,7 +93,9 @@ label.field-label{font-size:11px;font-weight:800;color:var(--muted);text-transfo
 .result-icon{font-size:22px}
 .today-stat{display:flex;justify-content:space-between;align-items:center;padding:0 20px;margin:2px 0 10px;font-size:12px;color:var(--muted);font-weight:600}
 .today-stat b{color:var(--ink);font-size:14px}
-.pending-badge{margin:-4px 20px 10px;font-size:11px;font-weight:700;color:var(--red);background:var(--red-light);border-radius:8px;padding:5px 10px;text-align:center}
+.pending-badge{margin:-4px 20px 10px;font-size:11px;font-weight:700;color:var(--red);background:var(--red-light);border-radius:8px;padding:6px 8px 6px 12px;align-items:center;justify-content:space-between;gap:8px}
+.pending-sync-btn{background:var(--red);color:#fff;border:none;border-radius:6px;padding:5px 10px;font-size:10px;font-weight:800;cursor:pointer;white-space:nowrap}
+.pending-sync-btn:active{opacity:.8}
 
 /* SUMMARY */
 .summary-head{display:flex;justify-content:space-between;align-items:center;padding:0 4px 12px}
@@ -154,12 +159,16 @@ label.field-label{font-size:11px;font-weight:800;color:var(--muted);text-transfo
 <!-- SCAN -->
 <div id="screen-scan" class="screen">
   <div class="app-header">
+    <div class="net-status"><span class="dot"></span><span class="net-text">Online</span></div>
     <button class="lock-btn" onclick="exitSession()" title="Lock &amp; end session">🔓</button>
     <h1>Scan Stock</h1>
     <div class="sub">Point the camera at a QR code or barcode</div>
   </div>
   <div class="today-stat"><span>Scanned this session</span><b id="session-count">0</b></div>
-  <div class="pending-badge" id="pending-badge" style="display:none"></div>
+  <div class="pending-badge" id="pending-badge" style="display:none">
+    <span id="pending-text"></span>
+    <button class="pending-sync-btn" id="pending-sync-btn" onclick="flushQueue()">Sync now</button>
+  </div>
   <div class="result-banner" id="result-banner">
     <span class="result-icon" id="result-icon">✓</span>
     <span id="result-text">—</span>
@@ -179,6 +188,7 @@ label.field-label{font-size:11px;font-weight:800;color:var(--muted);text-transfo
 <!-- SUMMARY -->
 <div id="screen-summary" class="screen">
   <div class="app-header">
+    <div class="net-status"><span class="dot"></span><span class="net-text">Online</span></div>
     <button class="lock-btn" onclick="exitSession()" title="Lock &amp; end session">🔓</button>
     <h1>Stock Summary</h1>
     <div class="sub">Live totals from your Google Sheet</div>
@@ -195,6 +205,7 @@ label.field-label{font-size:11px;font-weight:800;color:var(--muted);text-transfo
 <!-- SETTINGS -->
 <div id="screen-settings" class="screen">
   <div class="app-header">
+    <div class="net-status"><span class="dot"></span><span class="net-text">Online</span></div>
     <button class="lock-btn" onclick="exitSession()" title="Lock &amp; end session">🔓</button>
     <h1>Settings</h1>
     <div class="sub">Connect your Google Sheet, manage PIN</div>
@@ -322,6 +333,7 @@ function exitSession(){
 function unlockApp(){
   document.getElementById('tab-bar').classList.remove('hidden');
   showScreen('screen-scan');
+  updateNetStatus();
   flushQueue();
 }
 function startChangePin(){
@@ -343,6 +355,7 @@ function showScreen(id){
   const tabId = 'tab-' + id.replace('screen-','');
   const tabEl = document.getElementById(tabId);
   if(tabEl) tabEl.classList.add('active');
+  updateNetStatus();
 
   if(id === 'screen-settings'){
     document.getElementById('script-url-input').value = localStorage.getItem('wys_script_url') || '';
@@ -543,14 +556,40 @@ function loadQueue(){
 }
 function saveQueue(q){
   localStorage.setItem(PENDING_QUEUE_KEY, JSON.stringify(q));
+  renderPendingBadge();
+}
+
+// Two distinct, honest states — not just "count > 0":
+// actually syncing right now (flushing) vs waiting for someone/something
+// to trigger a retry (idle, needs the manual button since auto-retry on
+// reconnect isn't fully reliable on iPhone Safari).
+function renderPendingBadge(){
   const badge = document.getElementById('pending-badge');
+  const text = document.getElementById('pending-text');
+  const btn = document.getElementById('pending-sync-btn');
   if(!badge) return;
-  if(q.length > 0){
-    badge.textContent = `⏳ ${q.length} scan${q.length>1?'s':''} waiting to sync`;
-    badge.style.display = 'block';
-  } else {
+  const n = loadQueue().length;
+  if(n === 0){
     badge.style.display = 'none';
+    return;
   }
+  badge.style.display = 'flex';
+  if(flushing){
+    text.textContent = `⏳ Syncing ${n} scan${n>1?'s':''}…`;
+    btn.style.display = 'none';
+  } else {
+    text.textContent = `⚠ ${n} scan${n>1?'s':''} pending`;
+    btn.style.display = 'inline-block';
+  }
+}
+
+function updateNetStatus(){
+  const online = navigator.onLine;
+  document.querySelectorAll('.net-status').forEach(el=>{
+    el.classList.toggle('offline', !online);
+    const t = el.querySelector('.net-text');
+    if(t) t.textContent = online ? 'Online' : 'Offline';
+  });
 }
 
 function queueScan(code){
@@ -565,6 +604,7 @@ let flushing = false;
 async function flushQueue(showOfflineToast){
   if(flushing) return;
   flushing = true;
+  renderPendingBadge();
   const startLen = loadQueue().length;
   try{
     let q = loadQueue();
@@ -594,6 +634,7 @@ async function flushQueue(showOfflineToast){
     }
   } finally {
     flushing = false;
+    renderPendingBadge();
   }
 }
 
@@ -770,6 +811,7 @@ function formatTime(iso){
 // ════════════════════════════════════════════════════════════
 function init(){
   saveQueue(loadQueue()); // restore the pending-sync badge from any earlier session
+  updateNetStatus();
   lockApp();
 }
 
@@ -781,8 +823,9 @@ document.addEventListener('click', function(e){
 }, true);
 window.addEventListener('load', init);
 window.addEventListener('pageshow', lockApp);
-window.addEventListener('online', ()=>flushQueue());
-document.addEventListener('visibilitychange', ()=>{ if(document.hidden){ stopScanner(); lockApp(); } else { flushQueue(); } });
+window.addEventListener('online', ()=>{ updateNetStatus(); flushQueue(); });
+window.addEventListener('offline', updateNetStatus);
+document.addEventListener('visibilitychange', ()=>{ if(document.hidden){ stopScanner(); lockApp(); } else { updateNetStatus(); flushQueue(); } });
 </script>
 </div>
 </body>
