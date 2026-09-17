@@ -21,6 +21,13 @@
   .brand{font-weight:800;font-size:13px;margin-top:8px}
   .model{font-size:11px;color:#8a7d68}
   .code{font-family:monospace;font-size:11px;color:#c9a24b;margin-top:4px}
+  .section-title{font-size:16px;font-weight:800;margin:36px 0 4px}
+  .real-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px;max-width:1040px}
+  .real-card{background:#fff;border:1px solid #e6ded0;border-radius:14px;padding:12px;text-align:center}
+  .real-card img{width:100%;height:auto;border-radius:8px;display:block}
+  .real-card .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;padding:3px 8px;border-radius:6px;margin-top:8px}
+  .tag.has-barcode{background:#e7f4ec;color:#3f8f5f}
+  .tag.text-only{background:#fbeae9;color:#c0453f}
 </style>
 </head>
 <body>
@@ -44,6 +51,40 @@
   </div>
 </div>
 <div class="grid" id="grid"></div>
+
+<div class="section-title">Real vendor photos (for testing barcode &amp; OCR fallback)</div>
+<p class="note" style="margin-bottom:16px">
+  Actual product labels from stock — some have a real barcode, some are text-only with no scannable
+  code at all. Point the phone at the screen showing one of these to test against it.
+  The barcode ones should scan directly; the text-only ones should trigger the OCR fallback after a
+  couple seconds of no decode.
+</p>
+<div class="real-grid">
+  <div class="real-card">
+    <img src="S__49086467.jpg" alt="BEGA power supply box with barcode">
+    <div class="brand">BEGA — Power supply unit 70 564</div>
+    <div class="code">4044017150286</div>
+    <div class="tag has-barcode">Has barcode</div>
+  </div>
+  <div class="real-card">
+    <img src="S__49086468.jpg" alt="Driver wrapped in kraft paper, text-only label">
+    <div class="brand">LED driver</div>
+    <div class="code">OR-DU-30XA-W-54</div>
+    <div class="tag text-only">Text only — no barcode</div>
+  </div>
+  <div class="real-card">
+    <img src="S__49086469.jpg" alt="Delta Light fixture with text-only sticker">
+    <div class="brand">DELTA LIGHT — fixture unit</div>
+    <div class="code">28402 9320</div>
+    <div class="tag text-only">Text only — no barcode</div>
+  </div>
+  <div class="real-card">
+    <img src="S__49086470.jpg" alt="Delta Light shipping box with barcode">
+    <div class="brand">DELTA LIGHT — ENTERO RD-S 93020 B (box)</div>
+    <div class="code">5414823642180</div>
+    <div class="tag has-barcode">Has barcode</div>
+  </div>
+</div>
 
 <script>
 const SAMPLES = [

@@ -9,6 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://unpkg.com/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
 <style>
 :root{
   /* Premium architectural-lighting palette (inferred from palicon.co.th's
@@ -182,6 +183,9 @@ label.field-label{font-size:11px;font-weight:800;color:var(--muted);text-transfo
   </div>
   <div style="margin:14px 16px 0">
     <button class="btn btn-outline" id="scan-toggle-btn" onclick="toggleScanner()">Start Camera</button>
+  </div>
+  <div style="margin:10px 16px 0">
+    <button class="btn btn-outline btn-sm" onclick="manualEntry()">⌨️ Can't scan it? Type the code</button>
   </div>
 </div>
 
@@ -414,6 +418,8 @@ let lastScannedAt = 0;
 
 const SCAN_PAUSE_MS = 2500;   // camera pause + result banner — one shared duration (real Aim time needs more than a flick)
 const FAST_REPEAT_MS = 3000;  // same code again within this window = probably the same physical box, not a new unit
+const OCR_FALLBACK_MS = 2500; // no QR/barcode decode within this window -> try reading the label as plain text instead
+let ocrTimer = null;
 
 function toggleScanner(){
   if(!getScriptUrl()){
@@ -429,11 +435,19 @@ function startScanner(){
   const config = {
     fps: 15,
     qrbox: { width: 240, height: 240 },
-    // QR-only for now — testing 7 formats per frame was the likely cause of the
-    // 3-5s Read delay once the green box locked on. Real vendor codes might be
-    // barcodes, not QR (still an open question) — re-add EAN/UPC/Code128/Code39
-    // to this list once that's confirmed, and re-check Read speed at that point.
-    formatsToSupport: [ Html5QrcodeSupportedFormats.QR_CODE ],
+    // Real vendor photos (2026-09-17) confirmed actual product codes are mostly
+    // EAN-13 barcodes on the shipping box, not QR — re-enabled here. The earlier
+    // 3-5s Read delay turned out to be resolution, not format count (see the
+    // videoConstraints note below), so this is safe to widen again.
+    formatsToSupport: [
+      Html5QrcodeSupportedFormats.QR_CODE,
+      Html5QrcodeSupportedFormats.EAN_13,
+      Html5QrcodeSupportedFormats.EAN_8,
+      Html5QrcodeSupportedFormats.UPC_A,
+      Html5QrcodeSupportedFormats.UPC_E,
+      Html5QrcodeSupportedFormats.CODE_128,
+      Html5QrcodeSupportedFormats.CODE_39
+    ],
     experimentalFeatures: { useBarCodeDetectorIfSupported: true },
     // Lower resolution = far less pixel data to decode per frame — the likely
     // real cause of the 3-5s Read delay, more than format count. 480p is plenty
@@ -448,6 +462,7 @@ function startScanner(){
     .then(()=>{
       scannerRunning = true;
       document.getElementById('scan-toggle-btn').textContent = 'Stop Camera';
+      resetOcrTimer();
     })
     .catch(err=>{
       showToast('Camera failed to start — check permission', 'error');
@@ -460,6 +475,7 @@ function stopScanner(){
     html5QrCode.stop().then(()=>html5QrCode.clear()).catch(()=>{});
   }
   scannerRunning = false;
+  stopOcrTimer();
   const btn = document.getElementById('scan-toggle-btn');
   if(btn) btn.textContent = 'Start Camera';
 }
@@ -467,16 +483,27 @@ function stopScanner(){
 function onScanSuccess(decodedText){
   if(scanLocked) return;
   scanLocked = true;
-  const code = decodedText.trim();
-
   // Instant local "read" beep — fires the moment the camera decodes something,
   // before waiting on the network.
   playTick();
+  freezeCamera();
+  registerScan(decodedText.trim());
+}
 
-  // Freeze the camera view so it's visually obvious scanning is paused.
+function freezeCamera(){
   if(html5QrCode) html5QrCode.pause(true);
   document.getElementById('reader').classList.add('paused');
+}
 
+function unfreezeCamera(){
+  document.getElementById('reader').classList.remove('paused');
+  if(html5QrCode && scannerRunning) html5QrCode.resume();
+}
+
+// Shared by every input method — camera decode, OCR-confirmed text, and
+// manual entry all end up here so counting, sync, and the offline queue
+// behave identically no matter how the code was obtained.
+function registerScan(code){
   // Fast-repeat check needs no server round trip — we already know locally
   // whether this exact code was just scanned a couple seconds ago.
   const isFastRepeat = (code === lastScannedCode) && (Date.now() - lastScannedAt < FAST_REPEAT_MS);
@@ -501,11 +528,78 @@ function onScanSuccess(decodedText){
 
   setTimeout(()=>{
     scanLocked = false;
-    document.getElementById('reader').classList.remove('paused');
-    if(html5QrCode && scannerRunning) html5QrCode.resume();
+    unfreezeCamera();
+    resetOcrTimer();
   }, SCAN_PAUSE_MS);
 
   queueScan(code);
+}
+
+// ════════════════════════════════════════════════════════════
+// OCR FALLBACK — for labels with no QR/barcode at all (confirmed common in
+// real vendor photos, 2026-09-17). If nothing decodes for OCR_FALLBACK_MS,
+// grab one still frame and try reading it as plain text instead. Always
+// shown to the user to confirm/edit before it counts as anything — OCR can
+// misread a character, so it must never silently submit a guess.
+// ════════════════════════════════════════════════════════════
+function resetOcrTimer(){
+  clearTimeout(ocrTimer);
+  if(scannerRunning){
+    ocrTimer = setTimeout(attemptOcrFallback, OCR_FALLBACK_MS);
+  }
+}
+
+function stopOcrTimer(){
+  clearTimeout(ocrTimer);
+  ocrTimer = null;
+}
+
+async function attemptOcrFallback(){
+  if(scanLocked || !scannerRunning) return;
+  const videoEl = document.querySelector('#reader video');
+  if(!videoEl || !videoEl.videoWidth){
+    resetOcrTimer();
+    return;
+  }
+  scanLocked = true;
+  freezeCamera();
+  showResult('ok', '🔍', 'No barcode found — reading text…');
+
+  try{
+    const canvas = document.createElement('canvas');
+    canvas.width = videoEl.videoWidth;
+    canvas.height = videoEl.videoHeight;
+    canvas.getContext('2d').drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+
+    const { data: { text } } = await Tesseract.recognize(canvas, 'eng');
+    const guess = text.split('\n').map(s => s.trim()).filter(Boolean)[0] || '';
+    confirmAndRegister(guess, 'Confirm the code it read (edit if wrong):');
+  }catch(err){
+    console.error(err);
+    showToast('Could not read any text — try again or type it in', 'error');
+    cancelOcrAttempt();
+  }
+}
+
+// Shared confirm step for OCR and manual entry — never trust a guess without
+// the user seeing and approving it first.
+function confirmAndRegister(guess, promptText){
+  const finalCode = prompt(promptText, guess);
+  if(finalCode && finalCode.trim()){
+    registerScan(finalCode.trim());
+  } else {
+    cancelOcrAttempt();
+  }
+}
+
+function cancelOcrAttempt(){
+  scanLocked = false;
+  unfreezeCamera();
+  resetOcrTimer();
+}
+
+function manualEntry(){
+  confirmAndRegister('', 'Enter the product code:');
 }
 
 // ════════════════════════════════════════════════════════════
