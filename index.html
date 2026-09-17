@@ -418,7 +418,8 @@ let lastScannedAt = 0;
 
 const SCAN_PAUSE_MS = 2500;   // camera pause + result banner — one shared duration (real Aim time needs more than a flick)
 const FAST_REPEAT_MS = 3000;  // same code again within this window = probably the same physical box, not a new unit
-const OCR_FALLBACK_MS = 2500; // no QR/barcode decode within this window -> try reading the label as plain text instead
+const OCR_FALLBACK_MS = 4000;       // no QR/barcode decode within this window -> try reading the label as plain text instead (needs real aim time first)
+const OCR_RETRY_AFTER_CANCEL_MS = 6000; // after a rejected/wrong OCR guess, wait much longer before trying again — gives time to reposition instead of immediately re-guessing the same bad frame
 let ocrTimer = null;
 
 function toggleScanner(){
@@ -542,16 +543,25 @@ function registerScan(code){
 // shown to the user to confirm/edit before it counts as anything — OCR can
 // misread a character, so it must never silently submit a guess.
 // ════════════════════════════════════════════════════════════
-function resetOcrTimer(){
+function resetOcrTimer(delay){
   clearTimeout(ocrTimer);
   if(scannerRunning){
-    ocrTimer = setTimeout(attemptOcrFallback, OCR_FALLBACK_MS);
+    ocrTimer = setTimeout(attemptOcrFallback, delay || OCR_FALLBACK_MS);
   }
 }
 
 function stopOcrTimer(){
   clearTimeout(ocrTimer);
   ocrTimer = null;
+}
+
+// Rough sanity check so obvious OCR noise (barcode stripes misread as
+// characters, stray marks) never even reaches the confirm prompt — a real
+// code is a reasonable length and mostly letters/digits, not symbols.
+function isLikelyValidCode(text){
+  if(!text || text.length < 4) return false;
+  const alnum = (text.match(/[A-Za-z0-9]/g) || []).length;
+  return (alnum / text.length) >= 0.5;
 }
 
 async function attemptOcrFallback(){
@@ -566,36 +576,51 @@ async function attemptOcrFallback(){
   showResult('ok', '🔍', 'No barcode found — reading text…');
 
   try{
+    // Crop to the center of the frame instead of the whole picture — cuts out
+    // background clutter and, more importantly, a barcode's own stripes right
+    // next to the text, which OCR was misreading as garbage characters.
+    const cropW = Math.round(videoEl.videoWidth * 0.7);
+    const cropH = Math.round(videoEl.videoHeight * 0.55);
+    const sx = Math.round((videoEl.videoWidth - cropW) / 2);
+    const sy = Math.round((videoEl.videoHeight - cropH) / 2);
     const canvas = document.createElement('canvas');
-    canvas.width = videoEl.videoWidth;
-    canvas.height = videoEl.videoHeight;
-    canvas.getContext('2d').drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+    canvas.width = cropW;
+    canvas.height = cropH;
+    canvas.getContext('2d').drawImage(videoEl, sx, sy, cropW, cropH, 0, 0, cropW, cropH);
 
     const { data: { text } } = await Tesseract.recognize(canvas, 'eng');
     const guess = text.split('\n').map(s => s.trim()).filter(Boolean)[0] || '';
-    confirmAndRegister(guess, 'Confirm the code it read (edit if wrong):');
+
+    if(!isLikelyValidCode(guess)){
+      showToast("Couldn't read that clearly — reposition and try again, or type it in", 'error');
+      cancelOcrAttempt(OCR_RETRY_AFTER_CANCEL_MS);
+      return;
+    }
+    confirmAndRegister(guess, 'Confirm the code it read (edit if wrong):', OCR_RETRY_AFTER_CANCEL_MS);
   }catch(err){
     console.error(err);
     showToast('Could not read any text — try again or type it in', 'error');
-    cancelOcrAttempt();
+    cancelOcrAttempt(OCR_RETRY_AFTER_CANCEL_MS);
   }
 }
 
 // Shared confirm step for OCR and manual entry — never trust a guess without
-// the user seeing and approving it first.
-function confirmAndRegister(guess, promptText){
+// the user seeing and approving it first. cancelDelay lets OCR give a longer
+// grace period on cancel (time to reposition) while manual entry just uses
+// the normal short wait since nothing was misread to begin with.
+function confirmAndRegister(guess, promptText, cancelDelay){
   const finalCode = prompt(promptText, guess);
   if(finalCode && finalCode.trim()){
     registerScan(finalCode.trim());
   } else {
-    cancelOcrAttempt();
+    cancelOcrAttempt(cancelDelay);
   }
 }
 
-function cancelOcrAttempt(){
+function cancelOcrAttempt(delay){
   scanLocked = false;
   unfreezeCamera();
-  resetOcrTimer();
+  resetOcrTimer(delay);
 }
 
 function manualEntry(){
