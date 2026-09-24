@@ -486,13 +486,21 @@ function onScanSuccess(decodedText){
 }
 
 function freezeCamera(){
-  if(html5QrCode) html5QrCode.pause(true);
+  // Only pause if the scanner is actually running — calling pause() on an
+  // already-stopped scanner (e.g. camera was manually stopped, then "Type
+  // the code" tapped) throws inside the library, which used to silently
+  // kill this whole function and leave scanLocked stuck true forever.
+  if(html5QrCode && scannerRunning){
+    try{ html5QrCode.pause(true); }catch(err){ console.error(err); }
+  }
   document.getElementById('reader').classList.add('paused');
 }
 
 function unfreezeCamera(){
   document.getElementById('reader').classList.remove('paused');
-  if(html5QrCode && scannerRunning) html5QrCode.resume();
+  if(html5QrCode && scannerRunning){
+    try{ html5QrCode.resume(); }catch(err){ console.error(err); }
+  }
 }
 
 // Shared by both input methods — camera decode and manual entry both end up
