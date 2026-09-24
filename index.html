@@ -328,7 +328,7 @@ function lockApp(){
   document.getElementById('lock-sub').textContent = localStorage.getItem('wys_pin_hash') ? 'Enter your PIN to continue' : 'Choose a 4-digit PIN';
 }
 function exitSession(){
-  if(!confirm('Lock the app and end this scan session?')) return;
+  if(!confirm('Clear the scan count and lock the app?')) return;
   sessionCount = 0;
   document.getElementById('session-count').textContent = sessionCount;
   lockApp();
