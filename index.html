@@ -499,6 +499,11 @@ function unfreezeCamera(){
 // here so counting, sync, and the offline queue behave identically no matter
 // how the code was obtained.
 function registerScan(code){
+  // Normalize once, here, so "DEMO-BEGA-002" and a manually-typed
+  // "demo-bega-002" (or one with stray leading/trailing spaces) are always
+  // treated as the exact same code, not two separate rows in the Sheet.
+  code = code.trim().toUpperCase();
+
   // Fast-repeat check needs no server round trip — we already know locally
   // whether this exact code was just scanned a couple seconds ago.
   const isFastRepeat = (code === lastScannedCode) && (Date.now() - lastScannedAt < FAST_REPEAT_MS);
