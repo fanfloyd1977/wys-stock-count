@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WYS — Sample Test Codes</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://unpkg.com/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
 <style>
   body{font-family:Inter,Arial,sans-serif;background:#f7f4ee;margin:0;padding:24px;color:#201c17}
   .page-header{display:flex;gap:20px;align-items:flex-start;margin-bottom:24px;flex-wrap:wrap}
@@ -28,6 +29,8 @@
   .real-card .tag{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;padding:3px 8px;border-radius:6px;margin-top:8px}
   .tag.has-barcode{background:#e7f4ec;color:#3f8f5f}
   .tag.text-only{background:#fbeae9;color:#c0453f}
+  .gen-label{font-size:10px;color:#8a7d68;margin-top:10px;text-transform:uppercase;letter-spacing:.3px;font-weight:700}
+  .gen-barcode{width:100%;height:auto;margin-top:4px}
 </style>
 </head>
 <body>
@@ -62,6 +65,8 @@
 <div class="real-grid">
   <div class="real-card">
     <img src="S__49086467.jpg" alt="BEGA power supply box with barcode">
+    <div class="gen-label">Clean barcode (same code, easier to scan)</div>
+    <svg class="gen-barcode" id="barcode-bega"></svg>
     <div class="brand">BEGA — Power supply unit 70 564</div>
     <div class="code">4044017150286</div>
     <div class="tag has-barcode">Has barcode</div>
@@ -80,6 +85,8 @@
   </div>
   <div class="real-card">
     <img src="S__49086470.jpg" alt="Delta Light shipping box with barcode">
+    <div class="gen-label">Clean barcode (same code, easier to scan)</div>
+    <svg class="gen-barcode" id="barcode-delta"></svg>
     <div class="brand">DELTA LIGHT — ENTERO RD-S 93020 B (box)</div>
     <div class="code">5414823642180</div>
     <div class="tag has-barcode">Has barcode</div>
@@ -99,6 +106,9 @@ const SAMPLES = [
   { brand: "DGA",                model: "Track Spot 3C",            code: "DEMO-DGA-009"  },
   { brand: "LINEA LIGHT GROUP",  model: "Cover Flap Strip",         code: "DEMO-LLG-010"  }
 ];
+
+JsBarcode("#barcode-bega", "4044017150286", { format: "EAN13", width: 2, height: 60, displayValue: true, margin: 6 });
+JsBarcode("#barcode-delta", "5414823642180", { format: "EAN13", width: 2, height: 60, displayValue: true, margin: 6 });
 
 new QRCode(document.getElementById('app-qr'), {
   text: 'https://fanfloyd1977.github.io/wys-stock-count/',
