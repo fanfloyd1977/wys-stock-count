@@ -107,7 +107,7 @@ label.field-label{font-size:11px;font-weight:800;color:var(--muted);text-transfo
 .sum-table td{padding:7px 4px;font-size:11px;border-top:1px solid var(--border);white-space:nowrap}
 .sum-table td.idx{color:var(--muted);font-weight:700;text-align:center}
 .sum-table td.brand{font-weight:800;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.2px;max-width:42px;overflow:hidden;text-overflow:ellipsis}
-.sum-table td.code{font-weight:700;color:var(--text)}
+.sum-table td.code{font-weight:700;color:var(--text);max-width:110px;overflow:hidden;text-overflow:ellipsis}
 .sum-table td.qty{font-weight:800;color:var(--gold);text-align:center}
 .sum-table td.adjust{padding:5px 4px}
 .sum-table td.time{padding-left:10px;text-align:right}
@@ -697,6 +697,10 @@ async function flushQueue(showOfflineToast){
 // safely even if someone else is scanning the same code at the same time —
 // see project notes for the concurrent-counting discussion this came from.
 // ════════════════════════════════════════════════════════════
+// Fires the Sheet write in the background — the UI is already updated
+// optimistically by the caller before this even runs, so nothing waits on
+// this slow Apps Script round trip. onFail re-fetches the real Summary data
+// to correct the display if the write didn't actually go through.
 async function adjustQty(code, delta, opts){
   opts = opts || {};
   try{
@@ -708,13 +712,14 @@ async function adjustQty(code, delta, opts){
     const data = await res.json();
     if(data.status === 'adjusted' || data.status === 'removed'){
       showToast(opts.message || `${code}: ${delta > 0 ? '+1' : delta} done ✓`, 'success');
-      if(opts.onDone) opts.onDone();
     } else {
-      showToast(data.message || 'Adjust failed', 'error');
+      showToast(data.message || 'Adjust failed — refreshing to correct', 'error');
+      if(opts.onFail) opts.onFail();
     }
   }catch(err){
-    showToast('Could not reach your Sheet — check connection', 'error');
+    showToast('Could not reach your Sheet — refreshing to correct', 'error');
     console.error(err);
+    if(opts.onFail) opts.onFail();
   }
 }
 
@@ -837,15 +842,36 @@ async function loadSummary(){
   }
 }
 
+function adjustSummaryTotals(deltaQty, deltaCodes){
+  const totalEl = document.getElementById('summary-total');
+  const skusEl = document.getElementById('summary-skus');
+  if(totalEl) totalEl.textContent = (Number(totalEl.textContent) || 0) + deltaQty;
+  if(skusEl) skusEl.textContent = (Number(skusEl.textContent) || 0) + deltaCodes;
+}
+
 document.addEventListener('click', function(e){
   const btn = e.target.closest('.adj-btn');
   if(!btn) return;
   const tr = btn.closest('tr');
   const code = tr.dataset.code;
   const delta = Number(btn.dataset.delta);
+  const qtyEl = tr.querySelector('td.qty');
+  const newQty = Number(qtyEl.textContent) + delta;
+
+  // Optimistic update — reflect the change instantly instead of waiting on
+  // the slow Apps Script round trip. adjustQty's onFail re-fetches the real
+  // data to correct the display if the write didn't actually go through.
+  if(newQty <= 0){
+    tr.remove();
+    adjustSummaryTotals(delta, -1);
+  } else {
+    qtyEl.textContent = newQty;
+    adjustSummaryTotals(delta, 0);
+  }
+
   adjustQty(code, delta, {
     message: `${code}: ${delta > 0 ? '+1' : '-1'} done ✓`,
-    onDone: loadSummary
+    onFail: loadSummary
   });
 });
 
