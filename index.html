@@ -789,25 +789,9 @@ function playAlarm(){
 // ════════════════════════════════════════════════════════════
 // SUMMARY
 // ════════════════════════════════════════════════════════════
-// Demo-only brand lookup, matching sample-codes.html's SAMPLES list — no real
-// vendor product database exists yet. Replace with real data once the client's
-// actual product codes/brands are known.
-const PRODUCT_LOOKUP = {
-  'DEMO-ERCO-001':   { brand: 'ERCO' },
-  'DEMO-BEGA-002':   { brand: 'BEGA' },
-  'DEMO-VIABZ-003':  { brand: 'VIABIZZUNO' },
-  'DEMO-VIBIA-004':  { brand: 'VIBIA' },
-  'DEMO-DELTA-005':  { brand: 'DELTA LIGHT' },
-  'DEMO-AQF-006':    { brand: 'AQForm' },
-  'DEMO-ORL-007':    { brand: 'ORLUNA' },
-  'DEMO-LEDLIN-008': { brand: 'LED LINEAR' },
-  'DEMO-DGA-009':    { brand: 'DGA' },
-  'DEMO-LLG-010':    { brand: 'LINEA LIGHT GROUP' },
-  // Real vendor codes (from stock photos, 2026-09-17)
-  '4044017150286':   { brand: 'BEGA' },           // Power supply unit 70 564 — box barcode
-  '28402 9320':      { brand: 'DELTA LIGHT' },    // Entero RD-S fixture's own text code
-  '5414823642180':   { brand: 'DELTA LIGHT' }     // Entero RD-S 93020 B — box barcode
-};
+// Brand now comes from the Sheet's "Brands" tab (via the Apps Script
+// response, see AppsScript.gs) — no hardcoded list here anymore, so there's
+// one place to maintain it, not two that can drift apart.
 
 async function loadSummary(){
   if(!getScriptUrl()){
@@ -833,7 +817,7 @@ async function loadSummary(){
     items.forEach(it=>{ if(it.lastScanned && it.lastScanned > latestTime){ latestTime = it.lastScanned; latestCode = it.code; } });
 
     const rows = items.map((it,i)=>{
-      const brand = (PRODUCT_LOOKUP[it.code] && PRODUCT_LOOKUP[it.code].brand) || '—';
+      const brand = it.brand || '—';
       const rowClass = it.code === latestCode ? ' class="latest"' : '';
       const safeCode = escapeHtml(it.code);
       return `<tr${rowClass} data-code="${safeCode}"><td class="idx">${i+1}</td><td class="brand">${escapeHtml(brand)}</td><td class="code">${safeCode}</td><td class="qty">${it.qty}</td><td class="adjust"><button class="adj-btn" data-delta="-1">−</button><button class="adj-btn" data-delta="1">+</button></td><td class="time">${formatTime(it.lastScanned)}</td></tr>`;
